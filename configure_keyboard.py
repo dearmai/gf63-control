@@ -16,7 +16,7 @@ Type=Application
 Name=GF63 Control Korean Keyboard
 Comment=Use Caps Lock for Korean/English switching
 Exec=/usr/bin/python3 /usr/share/gf63-control/configure_xfce.py --apply-keyboard
-OnlyShowIn=XFCE;
+OnlyShowIn=XFCE;KDE;
 Terminal=false
 StartupNotify=false
 '''

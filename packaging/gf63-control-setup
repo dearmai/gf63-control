@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 if [ "$(id -u)" = 0 ]; then
-    echo 'XFCE에 로그인한 일반 사용자로 실행하세요. sudo를 붙이지 마세요.' >&2
+    echo 'XFCE/KDE에 로그인한 일반 사용자로 실행하세요. sudo를 붙이지 마세요.' >&2
     exit 1
 fi
 if [ "${1:-}" = --restore ]; then
@@ -12,10 +12,11 @@ if [ "${1:-}" = --restore ]; then
     exit 0
 fi
 if [ -z "${DISPLAY:-}" ] || [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
-    echo 'XFCE 데스크톱의 터미널에서 실행하세요.' >&2
+    echo 'XFCE/KDE 데스크톱의 터미널에서 실행하세요.' >&2
     exit 1
 fi
-/usr/bin/python3 /usr/share/gf63-control/configure_xfce.py
+/usr/bin/python3 /usr/share/gf63-control/configure_xfce.py "$@"
+if [ "$#" -gt 0 ]; then exit 0; fi
 systemctl --user enable --now pipewire.socket pipewire-pulse.socket wireplumber.service
 config_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}
 mkdir -p "$config_dir/autostart"

@@ -6,6 +6,9 @@ import subprocess
 import sys
 import re
 
+import desktop_env
+import configure_mac
+import configure_lid
 import configure_keyboard
 
 BACKUP = Path.home() / '.config/gf63-control/xfce-backup.json'
@@ -24,11 +27,24 @@ def query(channel, prop, *args):
 
 
 def main():
+    if sys.argv[1:] in (['--mac-shortcuts'], ['--restore-mac-shortcuts']):
+        print(configure_mac.configure(restore=sys.argv[1] == '--restore-mac-shortcuts'))
+        return
+    if desktop_env.kind() == 'kde' and sys.argv[1:] != ['--apply-keyboard']:
+        import configure_kde
+        restore = sys.argv[1:] == ['--restore']
+        if restore:
+            configure_lid.configure(restore=True)
+            configure_kde.configure(restore=True)
+        print(configure_kde.configure(restore=restore, profile='hardware'))
+        return
     if sys.argv[1:] == ['--apply-keyboard']:
         configure_keyboard.configure(login=True)
         return
     backup = json.loads(BACKUP.read_text()) if BACKUP.exists() else {}
     if sys.argv[1:] == ['--restore']:
+        configure_mac.configure(restore=True)
+        configure_lid.configure(restore=True)
         configure_keyboard.configure(restore=True)
         for item in backup.values():
             channel, prop, kind, old, installed = item

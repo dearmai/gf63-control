@@ -9,6 +9,8 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, Gio, GLib
 import gf63_core as core
 import configure_keyboard as keyboard
+import configure_mac as mac
+import desktop_env
 
 
 class Control(Gtk.Application):
@@ -28,7 +30,7 @@ class Control(Gtk.Application):
             self.osd_enabled = bool(json.loads(self.preferences.read_text()).get('osd', True))
         except (OSError, ValueError, AttributeError):
             pass
-        self.screen_active = False
+        self.screen_active = True
         self.events = []
         self.action_queue = []
 
@@ -40,12 +42,13 @@ class Control(Gtk.Application):
         self.tray.connect('activate', lambda *_: self.activate())
         self.tray.connect('popup-menu', self.tray_menu)
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        self.bus.signal_subscribe('org.xfce.ScreenSaver', 'org.xfce.ScreenSaver',
-                                  'ActiveChanged', '/org/xfce/ScreenSaver', None,
+        saver_service, saver_path, saver_interface = desktop_env.screensaver()
+        self.bus.signal_subscribe(saver_service, saver_interface,
+                                  'ActiveChanged', saver_path, None,
                                   Gio.DBusSignalFlags.NONE, self.screensaver_changed)
         try:
-            result = self.bus.call_sync('org.xfce.ScreenSaver', '/org/xfce/ScreenSaver',
-                'org.xfce.ScreenSaver', 'GetActive', None, GLib.VariantType.new('(b)'),
+            result = self.bus.call_sync(saver_service, saver_path,
+                saver_interface, 'GetActive', None, GLib.VariantType.new('(b)'),
                 Gio.DBusCallFlags.NO_AUTO_START, 1000, None)
             self.screen_active = result.unpack()[0]
         except GLib.Error:
@@ -98,6 +101,7 @@ class Control(Gtk.Application):
         self.window.show_all()
         self.window.present()
         self.keyboard_settings()
+        self.mac_settings()
 
     def add_section(self, box, title):
         label = Gtk.Label()
@@ -168,7 +172,21 @@ class Control(Gtk.Application):
         box.pack_start(self.message, False, False, 10)
 
         power = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, margin=20)
-        notebook.append_page(power, Gtk.Label(label='전원 모드'))
+        power_scroll = Gtk.ScrolledWindow()
+        power_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        power_scroll.add(power)
+        notebook.append_page(power_scroll, Gtk.Label(label='전원 모드'))
+        self.add_section(power, '덮개를 닫아도 전원 유지')
+        self.row(power, 'lid', [('켜기', 'lid', 'on'), ('끄기 / 복원', 'lid', 'off')])
+        lid_note = Gtk.Label(label='전원 연결·배터리 모두 적용됩니다. 덮개를 닫으면 내장 화면을 끄고,\n'
+                                  '열면 화면 전원 상태를 복원합니다. 재부팅 후에도 유지됩니다.\n'
+                                  '수동 절전·유휴 절전·배터리 부족 동작과 화면 잠금은 기존 설정을 따릅니다.', xalign=0)
+        lid_note.set_line_wrap(True)
+        power.pack_start(lid_note, False, False, 0)
+        self.lid_message = Gtk.Label(xalign=0)
+        self.lid_message.set_line_wrap(True)
+        self.lid_message.set_max_width_chars(65)
+        power.pack_start(self.lid_message, False, False, 0)
         self.row(power, 'power', [('저소음', 'power', 'quiet'), ('일반', 'power', 'balanced'), ('성능', 'power', 'performance')])
         self.power_summary = Gtk.Label(xalign=0)
         self.power_summary.set_line_wrap(True)
@@ -224,6 +242,36 @@ class Control(Gtk.Application):
         settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         settings_scroll.add(settings)
         notebook.append_page(settings_scroll, Gtk.Label(label='기능키 · OSD'))
+        self.add_section(settings, 'Mac 스타일 단축키')
+        mac_note = Gtk.Label(label='Windows(Super) 키를 Command처럼 사용합니다.\n'
+                                  'Super+C/V/X/A/Z/S/F/T/W · Shift+Super+Z 다시 실행\n'
+                                  'Super+Tab 창 전환 · Shift+Super+Tab 역순 · Super+Space 실행기\n'
+                                  '터미널 동작은 아래에서 선택할 수 있습니다.\n'
+                                  '기존 Ctrl 및 GF63 단축키는 유지됩니다.', xalign=0)
+        mac_note.set_line_wrap(True)
+        settings.pack_start(mac_note, False, False, 0)
+        self.mac_terminal = Gtk.CheckButton(label='터미널에도 Mac 스타일 적용 (Super+C/V 복사·붙여넣기)')
+        self.mac_terminal.set_active(True)
+        settings.pack_start(self.mac_terminal, False, False, 0)
+        terminal_note = Gtk.Label(label='호환성 문제가 있으면 터미널 적용만 해제할 수 있습니다.\n'
+                                       '전체를 끄려면 원래 단축키 복원을 누르세요.\n'
+                                       '선택을 바꾼 후 Mac 스타일 적용을 누르면 저장됩니다.', xalign=0)
+        terminal_note.set_line_wrap(True)
+        settings.pack_start(terminal_note, False, False, 0)
+        self.mac_status = Gtk.Label(label='설정 확인 중…', xalign=0)
+        self.mac_status.set_line_wrap(True)
+        self.mac_status.set_max_width_chars(65)
+        settings.pack_start(self.mac_status, False, False, 0)
+        mac_buttons = Gtk.Box(spacing=8)
+        self.mac_buttons = []
+        self.mac_busy = False
+        for title, operation in [('Mac 스타일 적용', 'apply'), ('원래 단축키 복원', 'restore'),
+                                 ('상태 확인', 'status')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.mac_settings(op))
+            mac_buttons.pack_start(button, False, False, 0)
+            self.mac_buttons.append(button)
+        settings.pack_start(mac_buttons, False, False, 0)
         self.add_section(settings, '한영 전환')
         keyboard_note = Gtk.Label(label='한/영 또는 Caps Lock 키로 한국어와 영어를 전환합니다.\n'
                                        'Caps Lock의 대문자 고정 기능은 해제됩니다.\n'
@@ -273,6 +321,36 @@ class Control(Gtk.Application):
         self.history.set_selectable(True)
         settings.pack_start(self.history, False, False, 0)
         self.update_ui()
+
+    def mac_settings(self, operation='status'):
+        if self.mac_busy:
+            return
+        self.mac_busy = True
+        self.mac_status.set_text('단축키 설정 확인 중…' if operation == 'status' else '단축키 변경 중…')
+        for button in self.mac_buttons:
+            button.set_sensitive(False)
+        mode = 'clipboard' if self.mac_terminal.get_active() else 'disabled'
+        self.mac_terminal.set_sensitive(False)
+        def work():
+            if operation == 'apply':
+                mac.set_terminal_mode(mode)
+            message = mac.status() if operation == 'status' else mac.configure(restore=operation == 'restore')
+            return message, mac.terminal_mode()
+        future = self.pool.submit(work)
+        future.add_done_callback(lambda result: GLib.idle_add(self.mac_finished, result))
+
+    def mac_finished(self, future):
+        self.mac_busy = False
+        self.mac_terminal.set_sensitive(True)
+        for button in self.mac_buttons:
+            button.set_sensitive(True)
+        try:
+            message, mode = future.result()
+            self.mac_status.set_text(message)
+            self.mac_terminal.set_active(mode == 'clipboard')
+        except Exception as exc:
+            self.mac_status.set_text('Mac 단축키 설정 실패: ' + str(exc))
+        return False
 
     def keyboard_settings(self, operation='status'):
         if self.keyboard_busy:
@@ -362,6 +440,8 @@ class Control(Gtk.Application):
         return True
 
     def action(self, action, value=None):
+        if self.window and action == 'lid':
+            self.lid_message.set_text('덮개 설정 적용 중…')
         self.submit(lambda: core.apply(action, value), action=True)
 
     def complete(self, future, action):
@@ -379,12 +459,14 @@ class Control(Gtk.Application):
             self.state = new
             if self.window and action:
                 self.message.set_text('적용 상태를 확인했습니다.')
+                self.lid_message.set_text('적용 상태를 확인했습니다.')
             self.update_ui()
         except Exception as exc:
             if action:
                 self.popup('적용하지 못했습니다', str(exc)[:100])
             if self.window:
                 self.message.set_text(str(exc))
+                self.lid_message.set_text(str(exc))
         if self.action_queue:
             self.submit(self.action_queue.pop(0), action=True)
         return False

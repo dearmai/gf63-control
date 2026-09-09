@@ -1,5 +1,7 @@
 """Read device state and dispatch a fixed set of desktop actions."""
 import os
+import configure_lid
+import desktop_env
 import json
 from pathlib import Path
 import re
@@ -9,7 +11,7 @@ EC = Path('/sys/devices/platform/msi-ec')
 HELPER = '/usr/libexec/gf63-control-helper'
 LABELS = {'brightness': '화면 밝기', 'keyboard': '키보드 조명',
           'volume': '스피커 음량', 'microphone': '마이크', 'touchpad': '터치패드',
-          'webcam': '웹캠', 'cooler_boost': '팬 부스트', 'battery': '충전 상한', 'power': '전원 모드'}
+          'webcam': '웹캠', 'cooler_boost': '팬 부스트', 'battery': '충전 상한', 'power': '전원 모드', 'lid': '덮개 닫고 사용'}
 
 
 def run(*args):
@@ -42,6 +44,8 @@ def parse_volume(text):
 
 
 def touchpads():
+    if not desktop_env.x11():
+        return []
     output = run('xinput', 'list', '--short')
     return re.findall(r'[^\n]*[Tt]ouchpad[^\n]*?id=(\d+)', output)
 
@@ -57,6 +61,15 @@ def touchpad_state():
 
 def snapshot():
     data = {}
+    try:
+        lid = dict(line.split('=', 1) for line in run('systemctl', 'show', 'gf63-lid.service',
+                   '--property=LoadState,ActiveState,UnitFileState').splitlines())
+        data['lid'] = ('on' if configure_lid.current() == 'true' else 'conflict') if lid.get('ActiveState') == 'active' else (
+            'off' if lid.get('ActiveState') == 'inactive' and lid.get('UnitFileState') == 'disabled' else 'failed')
+        if lid.get('LoadState') != 'loaded':
+            data['lid'] = None
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError):
+        data['lid'] = None
     base = Path('/sys/class/backlight/intel_backlight')
     current, maximum = number(base / 'brightness'), number(base / 'max_brightness')
     data['brightness'] = round(current * 100 / maximum) if current is not None and maximum else None
@@ -95,6 +108,9 @@ def snapshot():
 def description(key, value):
     if value is None:
         return '사용할 수 없음'
+    if key == 'lid':
+        return {'on': '켜짐 · 화면만 끔', 'off': '꺼짐', 'conflict': '데스크톱 설정 확인 필요',
+                'failed': '서비스 확인 필요'}.get(value, '확인 필요')
     if key == 'power':
         return {'quiet': '저소음', 'balanced': '일반', 'performance': '성능',
                 'custom': '사용자 설정'}.get(value, '시스템: ' + str(value))
@@ -108,7 +124,24 @@ def description(key, value):
 
 
 def apply(action, value=None):
-    if action == 'power':
+    if action == 'lid':
+        if value not in ('on', 'off'):
+            raise ValueError('덮개 설정은 on/off만 허용합니다.')
+        if value == 'on':
+            old = configure_lid.current()
+            had_backup = configure_lid.backup_path().exists()
+            try:
+                configure_lid.configure()
+                run('pkexec', HELPER, 'lid', value)
+            except Exception:
+                configure_lid.write(old)
+                if not had_backup and configure_lid.backup_path().exists():
+                    configure_lid.backup_path().unlink()
+                raise
+        else:
+            run('pkexec', HELPER, 'lid', value)
+            configure_lid.configure(restore=True)
+    elif action == 'power':
         run('pkexec', HELPER, 'power', json.dumps(value) if isinstance(value, dict) else str(value))
     elif action in ('volume-up', 'volume-down'):
         run('wpctl', 'set-volume', '-l', '1.0', '@DEFAULT_AUDIO_SINK@',

@@ -7,9 +7,9 @@ import subprocess
 import tarfile
 
 ROOT = Path(__file__).resolve().parent.parent
-BUILD = ROOT / '.build/rpmbuild'
 DIST = ROOT / 'dist'
-NAME = 'gf63-control-1.0.0'
+NAME = 'gf63-control-1.3.0'
+BUILD = ROOT / '.build' / NAME / 'rpmbuild'
 
 
 def main():

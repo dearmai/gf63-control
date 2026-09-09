@@ -1,0 +1,17 @@
+[Unit]
+Description=GF63 closed-lid operation and internal display blanking
+After=systemd-logind.service
+Requires=systemd-logind.service
+
+[Service]
+Type=notify
+ExecStart=/usr/libexec/gf63-lid
+TimeoutStartSec=15
+TimeoutStopSec=5
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=full
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

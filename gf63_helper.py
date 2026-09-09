@@ -101,6 +101,32 @@ def set_power(raw):
     print(json.dumps(data))
 
 
+LID_UNIT = 'gf63-lid.service'
+
+
+def lid_systemctl(*args):
+    return subprocess.run(['/usr/bin/systemctl', *args, LID_UNIT], check=True,
+                          capture_output=True, text=True, timeout=20).stdout.strip()
+
+
+def set_lid(raw):
+    if raw not in ('on', 'off'):
+        raise ValueError('덮개 설정은 on/off만 허용합니다.')
+    previous = lid_systemctl('show', '--property=UnitFileState', '--value')
+    active = lid_systemctl('show', '--property=ActiveState', '--value')
+    try:
+        lid_systemctl('enable' if raw == 'on' else 'disable', '--now')
+        actual = lid_systemctl('show', '--property=ActiveState', '--value')
+        enabled = lid_systemctl('show', '--property=UnitFileState', '--value')
+        if (actual, enabled) != (('active', 'enabled') if raw == 'on' else ('inactive', 'disabled')):
+            raise ValueError('덮개 서비스 적용 상태를 확인하지 못했습니다.')
+    except Exception:
+        lid_systemctl('enable' if previous == 'enabled' else 'disable')
+        lid_systemctl('start' if active == 'active' else 'stop')
+        raise
+    print(raw)
+
+
 def resolve(action, raw):
     if action == 'battery':
         value = int(raw)
@@ -131,6 +157,9 @@ def main():
     try:
         if len(sys.argv) != 3:
             raise ValueError('제어 이름과 값이 필요합니다.')
+        if sys.argv[1] == 'lid':
+            set_lid(sys.argv[2])
+            return 0
         if sys.argv[1] == 'power':
             set_power(sys.argv[2])
             return 0
