@@ -76,6 +76,30 @@ OS에 이벤트를 전달하지 않고 장치 상태도 바꾸지 않는 Fn 조�
 전원 모드 탭에서 TuneD를 통해 CPU 정책과 팬 모드를 설정합니다.
 팬 곡선, EC 원시 주소, Fn/Windows 키 위치는 변경하지 않습니다.
 
+### ThinLinc 등 원격 세션에서 반복되는 인증
+
+버튼은 `sudo`가 아닌 `pkexec`(polkit)를 사용하므로 sudoers의 `NOPASSWD`는
+적용되지 않습니다. ThinLinc는 활성 상태여도 원격 세션이므로 기본 정책에서
+매번 관리자 인증을 요구합니다.
+
+특정 사용자의 활성 원격 세션에도 암호 없는 제어를 허용하려면 관리자가
+`/etc/polkit-1/rules.d/40-gf63-control-user.rules`를 root 소유, 권한 `0644`로
+만들고 아래의 `YOUR_USERNAME`을 허용할 실제 로그인 이름으로 바꿉니다.
+이 예외는 해당 사용자의 활성 세션에서 GF63 helper 실행에만 적용됩니다.
+
+```javascript
+polkit.addRule(function(action, subject) {
+    if (action.id == "local.gf63.control.hardware" &&
+        action.lookup("program") == "/usr/libexec/gf63-control-helper" &&
+        subject.user == "YOUR_USERNAME" && subject.active) {
+        return polkit.Result.YES;
+    }
+});
+```
+
+polkit은 규칙 변경을 자동으로 읽습니다. 예외를 취소하려면 위 규칙 파일을
+삭제합니다. 이 설정은 호스트별 선택 사항이며 RPM에 포함되지 않습니다.
+
 알림 서비스 `xfce4-notifyd`, 내장 오디오용 `alsa-sof-firmware`와 `alsa-ucm`을 설치하고,
 사용자 PipeWire 및 WirePlumber를 활성화했습니다. 실제 스피커/마이크 장치 인식을
 확인했으나 음질·녹음 품질과 재부팅 후 전체 동작은 사용자 확인이 필요합니다.
