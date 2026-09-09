@@ -1,0 +1,5 @@
+Repository: https://github.com/BeardOverflow/msi-ec
+Commit: d7fbbd88e6831e56801b860e46475cbf8ddbc7c1
+Version: 0.13
+License: GPL-2.0-or-later
+Driver source and header are unmodified. Makefile and dkms.conf are packaging adaptations.

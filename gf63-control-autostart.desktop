@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=GF63 Control OSD
+Exec=/usr/bin/gf63-control --background
+Icon=preferences-system
+Terminal=false
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true

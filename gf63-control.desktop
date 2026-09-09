@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GF63 Control
+Name[ko]=GF63 노트북 제어
+Comment=Battery, function keys and on-screen display
+Exec=/usr/bin/gf63-control
+Icon=preferences-system
+Terminal=false
+Categories=Settings;HardwareSettings;
+StartupNotify=true

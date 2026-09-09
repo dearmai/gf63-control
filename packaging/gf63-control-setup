@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+if [ "$(id -u)" = 0 ]; then
+    echo 'XFCE에 로그인한 일반 사용자로 실행하세요. sudo를 붙이지 마세요.' >&2
+    exit 1
+fi
+if [ "${1:-}" = --restore ]; then
+    /usr/bin/python3 /usr/share/gf63-control/configure_xfce.py --restore
+    /usr/bin/gf63-control --quit || true
+    config_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}
+    rm -f "$config_dir/autostart/gf63-control.desktop"
+    exit 0
+fi
+if [ -z "${DISPLAY:-}" ] || [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    echo 'XFCE 데스크톱의 터미널에서 실행하세요.' >&2
+    exit 1
+fi
+/usr/bin/python3 /usr/share/gf63-control/configure_xfce.py
+systemctl --user enable --now pipewire.socket pipewire-pulse.socket wireplumber.service
+config_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}
+mkdir -p "$config_dir/autostart"
+install -m 0644 /usr/share/gf63-control/gf63-control-autostart.desktop "$config_dir/autostart/gf63-control.desktop"
+echo '기능키·오디오·자동 시작 설정 완료. gf63-control로 실행하세요.'
