@@ -8,6 +8,7 @@ BuildArch:      noarch
 BuildRequires:  python3
 Requires:       python3, python3-gobject, gtk3, polkit
 Requires:       xfce4-settings, xfce4-power-manager, xfce4-panel, xfce4-notifyd
+Requires:       xorg-x11-server-utils, ibus, ibus-hangul
 Requires:       xinput, wireplumber, pipewire, pipewire-pulseaudio
 Requires:       alsa-sof-firmware, alsa-ucm, systemd, tuned
 Requires:       msi-ec-dkms = 0.13-1%{?dist}
@@ -38,7 +39,7 @@ by the driver. No firmware override or raw EC writes are configured.
 install -d %{buildroot}%{_bindir} %{buildroot}%{_datadir}/gf63-control %{buildroot}%{_libexecdir}
 install -m 0755 packaging/gf63-control packaging/gf63-control-setup %{buildroot}%{_bindir}/
 install -m 0755 battery_limit.py %{buildroot}%{_bindir}/battery-limit
-install -m 0644 gf63_control.py gf63_core.py configure_xfce.py gf63-control-autostart.desktop %{buildroot}%{_datadir}/gf63-control/
+install -m 0644 gf63_control.py gf63_core.py configure_xfce.py configure_keyboard.py gf63-control-autostart.desktop %{buildroot}%{_datadir}/gf63-control/
 install -m 0755 gf63_helper.py %{buildroot}%{_libexecdir}/gf63-control-helper
 install -Dm 0644 gf63-control.desktop %{buildroot}%{_datadir}/applications/gf63-control.desktop
 install -Dm 0644 local.gf63.control.policy %{buildroot}%{_datadir}/polkit-1/actions/local.gf63.control.policy

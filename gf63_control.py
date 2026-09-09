@@ -8,6 +8,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, Gio, GLib
 import gf63_core as core
+import configure_keyboard as keyboard
 
 
 class Control(Gtk.Application):
@@ -96,6 +97,7 @@ class Control(Gtk.Application):
             self.build_window()
         self.window.show_all()
         self.window.present()
+        self.keyboard_settings()
 
     def add_section(self, box, title):
         label = Gtk.Label()
@@ -218,7 +220,31 @@ class Control(Gtk.Application):
         power.pack_start(note, False, False, 0)
 
         settings = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin=20)
-        notebook.append_page(settings, Gtk.Label(label='기능키 · OSD'))
+        settings_scroll = Gtk.ScrolledWindow()
+        settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        settings_scroll.add(settings)
+        notebook.append_page(settings_scroll, Gtk.Label(label='기능키 · OSD'))
+        self.add_section(settings, '한영 전환')
+        keyboard_note = Gtk.Label(label='한/영 또는 Caps Lock 키로 한국어와 영어를 전환합니다.\n'
+                                       'Caps Lock의 대문자 고정 기능은 해제됩니다.\n'
+                                       'IBus에서 한글 입력기를 선택한 상태에서 사용하세요.', xalign=0)
+        keyboard_note.set_line_wrap(True)
+        settings.pack_start(keyboard_note, False, False, 0)
+        self.keyboard_status = Gtk.Label(label='설정 확인 중…', xalign=0)
+        self.keyboard_status.set_line_wrap(True)
+        self.keyboard_status.set_max_width_chars(65)
+        settings.pack_start(self.keyboard_status, False, False, 0)
+        keyboard_buttons = Gtk.Box(spacing=8)
+        self.keyboard_buttons = []
+        self.keyboard_busy = False
+        for title, operation in [('한/영 + Caps Lock 적용', 'apply'),
+                                 ('원래 키 설정 복원', 'restore'), ('상태 확인', 'status')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.keyboard_settings(op))
+            keyboard_buttons.pack_start(button, False, False, 0)
+            self.keyboard_buttons.append(button)
+        settings.pack_start(keyboard_buttons, False, False, 0)
+        self.add_section(settings, '기능키와 OSD')
         explanation = Gtk.Label(xalign=0)
         explanation.set_text('밝기·음량·음소거·마이크·키보드 조명 키를 연결합니다.\n'
                              '웹캠·팬·터치패드처럼 펌웨어나 XFCE가 처리한 변화도 표시합니다.\n'
@@ -247,6 +273,34 @@ class Control(Gtk.Application):
         self.history.set_selectable(True)
         settings.pack_start(self.history, False, False, 0)
         self.update_ui()
+
+    def keyboard_settings(self, operation='status'):
+        if self.keyboard_busy:
+            return
+        self.keyboard_busy = True
+        self.keyboard_status.set_text('설정 확인 중…' if operation == 'status' else '키 설정 변경 중…')
+        for button in self.keyboard_buttons:
+            button.set_sensitive(False)
+
+        def work():
+            if operation == 'apply':
+                keyboard.configure()
+            elif operation == 'restore':
+                keyboard.configure(restore=True)
+            return keyboard.status()
+
+        future = self.pool.submit(work)
+        future.add_done_callback(lambda result: GLib.idle_add(self.keyboard_finished, result))
+
+    def keyboard_finished(self, future):
+        self.keyboard_busy = False
+        for button in self.keyboard_buttons:
+            button.set_sensitive(True)
+        try:
+            self.keyboard_status.set_text(future.result())
+        except Exception as exc:
+            self.keyboard_status.set_text('한영 전환 설정 실패: ' + str(exc))
+        return False
 
     def load_power(self, *_):
         self.epp.set_active_id(self.state.get('epp') or 'balance_performance')

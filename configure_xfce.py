@@ -6,6 +6,8 @@ import subprocess
 import sys
 import re
 
+import configure_keyboard
+
 BACKUP = Path.home() / '.config/gf63-control/xfce-backup.json'
 CHANNEL = 'xfce4-keyboard-shortcuts'
 BINDINGS = {
@@ -18,12 +20,16 @@ BINDINGS = {
 
 def query(channel, prop, *args):
     return subprocess.run(['xfconf-query', '-c', channel, '-p', prop, *args],
-                          text=True, capture_output=True, check=False)
+                          text=True, capture_output=True, check=False, timeout=10)
 
 
 def main():
+    if sys.argv[1:] == ['--apply-keyboard']:
+        configure_keyboard.configure(login=True)
+        return
     backup = json.loads(BACKUP.read_text()) if BACKUP.exists() else {}
     if sys.argv[1:] == ['--restore']:
+        configure_keyboard.configure(restore=True)
         for item in backup.values():
             channel, prop, kind, old, installed = item
             current = query(channel, prop)
@@ -47,7 +53,7 @@ def main():
     updates += [('xfce4-power-manager', '/xfce4-power-manager/handle-brightness-keys', 'bool', 'true'),
                 ('xfce4-power-manager', '/xfce4-power-manager/show-brightness-popup', 'bool', 'false')]
     panel = subprocess.run(['xfconf-query', '-c', 'xfce4-panel', '-lv'],
-                           text=True, capture_output=True, check=True).stdout
+                           text=True, capture_output=True, check=True, timeout=10).stdout
     for plugin in re.findall(r'^(/plugins/plugin-\d+)\s+pulseaudio\s*$', panel, re.M):
         updates.append(('xfce4-panel', plugin + '/enable-keyboard-shortcuts', 'bool', 'false'))
         current = query('xfce4-panel', plugin + '/show-notifications').stdout.strip()
@@ -70,6 +76,7 @@ def main():
         result = query(channel, prop, '-s', value) if old is not None else query(channel, prop, '-n', '-t', kind, '-s', value)
         if result.returncode:
             raise RuntimeError(result.stderr)
+    configure_keyboard.configure()
     print('기능키와 대체 단축키 등록 완료. 백업:', BACKUP)
 
 

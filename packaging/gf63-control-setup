@@ -20,4 +20,4 @@ systemctl --user enable --now pipewire.socket pipewire-pulse.socket wireplumber.
 config_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}
 mkdir -p "$config_dir/autostart"
 install -m 0644 /usr/share/gf63-control/gf63-control-autostart.desktop "$config_dir/autostart/gf63-control.desktop"
-echo '기능키·오디오·자동 시작 설정 완료. gf63-control로 실행하세요.'
+echo '기능키·한영 전환·오디오·자동 시작 설정 완료. gf63-control로 실행하세요.'
