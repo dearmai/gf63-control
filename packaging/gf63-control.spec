@@ -2,11 +2,11 @@ Name:           gf63-control
 Version:        1.3.0
 Release:        1%{?dist}
 Summary:        MSI GF63 GTK control panel, function keys and OSD
-License:        MIT
+License:        MIT AND OFL-1.1
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 BuildRequires:  python3, systemd-rpm-macros
-Requires:       python3, python3-gobject, gtk3, polkit
+Requires:       python3, python3-gobject, gtk3, polkit, fontconfig
 Recommends:     xfce4-settings, xfce4-power-manager, xfce4-panel, xfce4-notifyd
 Requires:       xorg-x11-server-utils, ibus, ibus-hangul
 Requires:       xdotool, xinput, wireplumber, pipewire, pipewire-pulseaudio
@@ -39,7 +39,9 @@ by the driver. No firmware override or raw EC writes are configured.
 install -d %{buildroot}%{_bindir} %{buildroot}%{_datadir}/gf63-control %{buildroot}%{_libexecdir}
 install -m 0755 packaging/gf63-control packaging/gf63-control-setup packaging/gf63-mac-shortcut %{buildroot}%{_bindir}/
 install -m 0755 battery_limit.py %{buildroot}%{_bindir}/battery-limit
-install -m 0644 gf63_control.py gf63_core.py configure_xfce.py configure_keyboard.py configure_lid.py configure_mac.py mac_shortcut.py desktop_env.py configure_kde.py configure_kde_lid.py gf63-control-autostart.desktop %{buildroot}%{_datadir}/gf63-control/
+install -m 0644 gf63_control.py gf63_core.py configure_xfce.py configure_keyboard.py configure_lid.py configure_mac.py mac_shortcut.py desktop_env.py configure_kde.py configure_kde_lid.py configure_fonts.py install_fonts.py gf63-control-autostart.desktop %{buildroot}%{_datadir}/gf63-control/
+install -d %{buildroot}%{_datadir}/gf63-control/vendor
+cp -a vendor/fonts %{buildroot}%{_datadir}/gf63-control/vendor/
 install -m 0755 gf63_lid.py %{buildroot}%{_libexecdir}/gf63-lid
 install -Dm 0644 packaging/gf63-lid.service %{buildroot}%{_unitdir}/gf63-lid.service
 install -m 0755 gf63_helper.py %{buildroot}%{_libexecdir}/gf63-control-helper
@@ -80,7 +82,7 @@ if [ "$1" -eq 0 ]; then
 fi
 
 %files
-%license LICENSE
+%license LICENSE vendor/fonts/pretendard/LICENSE.txt vendor/fonts/d2coding/OFL.txt
 %doc README.md REUSE.md AGENTS.md
 %{_bindir}/gf63-control
 %{_bindir}/gf63-control-setup

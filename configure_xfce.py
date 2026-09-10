@@ -27,9 +27,18 @@ def query(channel, prop, *args):
 
 
 def main():
+    if len(sys.argv) == 2 and sys.argv[1] in ('--fonts', '--restore-fonts', '--fonts-startup', '--no-fonts-startup'):
+        import configure_fonts
+        operation = {'--fonts': 'apply', '--restore-fonts': 'restore',
+                     '--fonts-startup': 'enable-startup', '--no-fonts-startup': 'disable-startup'}[sys.argv[1]]
+        print(configure_fonts.dispatch(operation))
+        return
     if sys.argv[1:] in (['--mac-shortcuts'], ['--restore-mac-shortcuts']):
         print(configure_mac.configure(restore=sys.argv[1] == '--restore-mac-shortcuts'))
         return
+    if sys.argv[1:] == ['--restore']:
+        import configure_fonts
+        configure_fonts.configure(restore=True)
     if desktop_env.kind() == 'kde' and sys.argv[1:] != ['--apply-keyboard']:
         import configure_kde
         restore = sys.argv[1:] == ['--restore']

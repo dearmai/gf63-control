@@ -190,3 +190,23 @@ Wayland에서도 시스템 제어는 가능하지만 Mac 키 변환·xinput 터�
 실제 KGlobalAccel 등록·반복 적용·복원 및 합성 키의 데스크톱 명령 실행,
 KConfig 덮개 값 쓰기·읽기·복원, GTK 제어판/OSD 렌더링을 확인했습니다.
 PowerDevil 전체 세션의 실제 덮개 개폐, 물리 키, KDE 6 및 Wayland 동작은 미검증입니다.
+
+
+### KDE · GNOME 글꼴과 GNOME 자동 시작
+
+Pretendard 1.3.9(9개 OTF)와 D2Coding 1.3.3(Regular/Bold TTF)을 RPM·소스·설치 번들에
+포함합니다. 원본과 SIL OFL 1.1 라이선스는 `vendor/fonts/`에 있으며 프로젝트 MIT와 별개입니다.
+`gf63-control-setup --fonts` 또는 제어판의 **설치 및 적용**으로 오프라인 설치·적용합니다.
+RPM 안의 `/usr/share/gf63-control/vendor/fonts/`에서 사용자 글꼴 폴더로 복사하므로
+관리자 권한이나 추가 다운로드가 필요하지 않습니다.
+
+GNOME에서 `gf63-control-setup --fonts-startup`으로 로그인 시 적용을 켜고,
+`--no-fonts-startup`으로 해제합니다. 설치된 패키지에서 등록하세요.
+`--restore-fonts`는 원래 글꼴 설정을 복원하고 GNOME 자동 시작도 해제합니다.
+KDE/GNOME 백업은 별개이며 이후 사용자 변경을 보존합니다. 설치된 글꼴은 복원 시 유지합니다.
+KDE에서는 일반 글꼴에 Pretendard, 고정폭·Konsole에 D2Coding을 사용합니다.
+GNOME에서는 일반·문서·창 제목에 Pretendard, 고정폭에 D2Coding을 사용합니다.
+GNOME 지원 범위는 글꼴 설정입니다. 사용자가 따로 지정한 터미널 글꼴은 유지합니다.
+
+KDE는 KConfig 도구, GNOME은 GSettings 스키마와 PyGObject/Pango가 필요합니다.
+적용·복원 후 앱을 재시작하거나 다시 로그인하세요. 상세 범위는 README.md를 참고하세요.

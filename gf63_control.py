@@ -11,6 +11,7 @@ import gf63_core as core
 import configure_keyboard as keyboard
 import configure_mac as mac
 import desktop_env
+import configure_fonts as fonts
 
 
 class Control(Gtk.Application):
@@ -102,6 +103,7 @@ class Control(Gtk.Application):
         self.window.present()
         self.keyboard_settings()
         self.mac_settings()
+        self.font_settings()
 
     def add_section(self, box, title):
         label = Gtk.Label()
@@ -242,6 +244,33 @@ class Control(Gtk.Application):
         settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         settings_scroll.add(settings)
         notebook.append_page(settings_scroll, Gtk.Label(label='기능키 · OSD'))
+        self.add_section(settings, 'KDE · GNOME · Konsole 글꼴')
+        font_note = Gtk.Label(label='KDE·GNOME 일반 글꼴: Pretendard · 고정폭: D2Coding\n'
+                                   '패키지에 포함된 글꼴을 오프라인으로 설치합니다. Konsole은 11pt입니다.\n'
+                                   '적용·복원 후 다시 로그인하고 Konsole을 재시작하세요.', xalign=0)
+        font_note.set_line_wrap(True)
+        settings.pack_start(font_note, False, False, 0)
+        self.font_status = Gtk.Label(label='설정 확인 중…', xalign=0)
+        self.font_status.set_line_wrap(True)
+        self.font_status.set_max_width_chars(65)
+        settings.pack_start(self.font_status, False, False, 0)
+        font_buttons = Gtk.Box(spacing=8)
+        self.font_buttons = []
+        self.font_busy = False
+        for title, operation in [('설치 및 적용', 'apply'), ('원래 글꼴 복원', 'restore'), ('상태 확인', 'status')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.font_settings(op))
+            font_buttons.pack_start(button, False, False, 0)
+            self.font_buttons.append(button)
+        settings.pack_start(font_buttons, False, False, 0)
+        startup_buttons = Gtk.Box(spacing=8)
+        for title, operation in [('GNOME 로그인 시 적용 켜기', 'enable-startup'),
+                                 ('로그인 시 적용 끄기', 'disable-startup')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.font_settings(op))
+            startup_buttons.pack_start(button, False, False, 0)
+            self.font_buttons.append(button)
+        settings.pack_start(startup_buttons, False, False, 0)
         self.add_section(settings, 'Mac 스타일 단축키')
         mac_note = Gtk.Label(label='Windows(Super) 키를 Command처럼 사용합니다.\n'
                                   'Super+C/V/X/A/Z/S/F/T/W · Shift+Super+Z 다시 실행\n'
@@ -321,6 +350,28 @@ class Control(Gtk.Application):
         self.history.set_selectable(True)
         settings.pack_start(self.history, False, False, 0)
         self.update_ui()
+
+    def font_settings(self, operation='status'):
+        if self.font_busy:
+            return
+        self.font_busy = True
+        self.font_status.set_text('글꼴 설정 확인 중…' if operation == 'status' else '글꼴 설정 변경 중…')
+        for button in self.font_buttons:
+            button.set_sensitive(False)
+        future = self.pool.submit(lambda: fonts.dispatch(operation))
+        future.add_done_callback(lambda result: GLib.idle_add(self.font_finished, result))
+
+    def font_finished(self, future):
+        self.font_busy = False
+        for button in self.font_buttons:
+            button.set_sensitive(True)
+        self.font_buttons[0].set_sensitive(fonts.environment() in ('kde', 'gnome'))
+        self.font_buttons[3].set_sensitive(fonts.environment() == 'gnome')
+        try:
+            self.font_status.set_text(future.result())
+        except Exception as exc:
+            self.font_status.set_text('글꼴 설정 실패: ' + str(exc))
+        return False
 
     def mac_settings(self, operation='status'):
         if self.mac_busy:

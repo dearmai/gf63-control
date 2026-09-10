@@ -257,3 +257,62 @@ Wayland에서도 시스템 제어는 가능하지만 Mac 키 변환·xinput 터�
 실제 KGlobalAccel 등록·반복 적용·복원 및 합성 키의 데스크톱 명령 실행,
 KConfig 덮개 값 쓰기·읽기·복원, GTK 제어판/OSD 렌더링을 확인했습니다.
 PowerDevil 전체 세션의 실제 덮개 개폐, 물리 키, KDE 6 및 Wayland 동작은 미검증입니다.
+
+
+### KDE · GNOME · Konsole 글꼴
+
+제어판 **기능키 · OSD → KDE · GNOME · Konsole 글꼴 → 설치 및 적용**을 사용하세요.
+패키지에 **Pretendard 1.3.9**의 9개 OTF 굵기와 **D2Coding 1.3.3**의
+Regular/Bold TTF를 포함합니다. 인터넷 연결이나 관리자 권한 없이 설치합니다.
+공식 배포본은 변경하지 않았으며, 두 글꼴의 SIL Open Font License 1.1과 원본 정보,
+SHA256 목록도 `vendor/fonts/`에 포함합니다. 프로젝트 MIT 라이선스와 별개입니다.
+
+RPM에는 `/usr/share/gf63-control/vendor/fonts/`로 포함하며 설치·적용 버튼은 파일을
+검증한 뒤 `$XDG_DATA_HOME/fonts/gf63-control/`(기본 `~/.local/share/fonts/gf63-control/`)에
+복사하고 fontconfig 캐시를 갱신합니다. 다른 사용자 글꼴은 수정하지 않습니다.
+이미 설치된 앱 전용 파일이 달라졌으면 덮어쓰지 않고 오류를 표시합니다.
+소스 아카이브, SRPM, 설치 번들에도 같은 리소스를 포함합니다.
+
+- KDE: 일반·메뉴·도구 모음·작은 글꼴·창 제목에 Pretendard, 고정폭에 D2Coding.
+  기존 크기·굵기를 유지하며 없는 값은 10pt(작은 글꼴 8pt)를 사용합니다.
+- Konsole(KDE): 기존 기본 프로필을 상속하는 `GF63-D2Coding.profile`을 생성하고
+  D2Coding 11pt로 설정합니다. 셸·색상은 상속하고 다른 프로필은 수정하지 않습니다.
+- GNOME: 일반·문서·창 제목에 Pretendard, 고정폭에 D2Coding. 기존 크기·스타일을 유지합니다.
+  X11/Wayland 모두 키 입력 없이 GSettings를 사용합니다. 터미널의 자체 글꼴 설정과
+  GNOME Shell 테마 글꼴은 변경하지 않습니다. GNOME용 GF63 단축키·OSD 지원과는 별개입니다.
+
+```bash
+# 설치된 패키지에서 실행: 로컬 글꼴 설치 + 현재 데스크톱에 적용
+gf63-control-setup --fonts
+# GNOME 로그인 시 설치·적용 확인 켜기 (현재 세션에도 설치·적용)
+gf63-control-setup --fonts-startup
+# 자동 시작만 해제, 현재 글꼴 설정 유지
+gf63-control-setup --no-fonts-startup
+# 현재 데스크톱의 원래 글꼴 복원 (GNOME에서는 앱 소유 자동 시작도 해제)
+gf63-control-setup --restore-fonts
+# 소스에서도 로컬 설치·적용 및 상태 확인 가능
+python3 configure_fonts.py
+python3 configure_fonts.py --status
+python3 configure_fonts.py --restore
+```
+
+GNOME 자동 시작은 설치된 패키지의 고정 경로를 사용하는
+`~/.config/autostart/gf63-control-fonts.desktop`에 등록하며 `OnlyShowIn=GNOME;`으로 제한합니다.
+`XDG_CONFIG_HOME`을 설정했다면 해당 경로를 사용합니다.
+로그인 시 다운로드하지 않습니다. 반복 적용은 이후 사용자 변경을 덮어쓰지 않습니다.
+자동 시작 오류는 세션의 표준 오류 출력으로 남기며, 제어판에서 다시 적용하면 오류를 확인할 수 있습니다.
+앱을 삭제하기 전 자동 시작을 해제하세요. 사용자가 수정한 자동 시작 파일은 보존합니다.
+
+설정 백업은 `$XDG_CONFIG_HOME/gf63-control/`의 `kde-fonts.json`과 `gnome-fonts.json`에
+분리 저장합니다. 적용했던 데스크톱에서 복원하면 앱이 적용한 값과 일치하는 항목만
+원래 값으로 돌립니다. GNOME의 원래 사용자 값이 없었던 항목은 기본값 상속으로 복원합니다.
+복원 시 설치된 글꼴 파일은 다른 앱에서도 사용할 수 있도록 유지합니다.
+
+KDE는 KConfig 5/6 도구, GNOME은 PyGObject/Pango와 `gsettings-desktop-schemas`가 필요합니다.
+적용·복원 후 앱을 재시작하거나 다시 로그인하세요. KDE에서는 모든 Konsole 창도
+종료한 뒤 실행하세요. 현재 앱의 즉시 갱신은 보장하지 않습니다.
+
+검증: 전체 86개 단위 테스트(글꼴·설치·자동 시작 관련 25개 포함). 임시 설정 저장소에서 실제 KF5 KConfig 및
+GNOME GSettings(keyfile 저장소)의 적용·읽기 확인·복원 검증.
+실제 로그인 자동 실행, 데스크톱 화면 및 KDE 6은 미검증입니다.
+원본 출처·라이선스·해시는 [vendor/fonts/UPSTREAM.md](vendor/fonts/UPSTREAM.md)를 참고하세요.
