@@ -8,6 +8,7 @@ BuildArch:      noarch
 BuildRequires:  python3, systemd-rpm-macros
 Requires:       python3, python3-gobject, gtk3, polkit, fontconfig
 Recommends:     xfce4-settings, xfce4-power-manager, xfce4-panel, xfce4-notifyd
+Recommends:     libappindicator-gtk3
 Requires:       xorg-x11-server-utils, ibus, ibus-hangul
 Requires:       xdotool, xinput, wireplumber, pipewire, pipewire-pulseaudio
 Requires:       alsa-sof-firmware, alsa-ucm, systemd, tuned
@@ -41,6 +42,7 @@ install -m 0755 packaging/gf63-control packaging/gf63-control-setup packaging/gf
 install -m 0755 battery_limit.py %{buildroot}%{_bindir}/battery-limit
 install -m 0644 gf63_control.py gf63_core.py configure_xfce.py configure_keyboard.py configure_lid.py configure_mac.py mac_shortcut.py desktop_env.py configure_kde.py configure_kde_lid.py configure_fonts.py install_fonts.py gf63-control-autostart.desktop %{buildroot}%{_datadir}/gf63-control/
 install -d %{buildroot}%{_datadir}/gf63-control/vendor
+install -m 0644 gf63-control.svg %{buildroot}%{_datadir}/gf63-control/
 cp -a vendor/fonts %{buildroot}%{_datadir}/gf63-control/vendor/
 install -m 0755 gf63_lid.py %{buildroot}%{_libexecdir}/gf63-lid
 install -Dm 0644 packaging/gf63-lid.service %{buildroot}%{_unitdir}/gf63-lid.service

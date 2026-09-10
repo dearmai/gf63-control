@@ -2,6 +2,7 @@
 """GF63 GTK control panel and single-instance OSD service."""
 import concurrent.futures
 import json
+import importlib
 from pathlib import Path
 import sys
 import gi
@@ -38,10 +39,7 @@ class Control(Gtk.Application):
     def do_startup(self):
         Gtk.Application.do_startup(self)
         self.hold()
-        self.tray = Gtk.StatusIcon.new_from_icon_name('preferences-system')
-        self.tray.set_tooltip_text('GF63 Control · 노트북 제어')
-        self.tray.connect('activate', lambda *_: self.activate())
-        self.tray.connect('popup-menu', self.tray_menu)
+        self.create_tray()
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         saver_service, saver_path, saver_interface = desktop_env.screensaver()
         self.bus.signal_subscribe(saver_service, saver_interface,
@@ -87,14 +85,39 @@ class Control(Gtk.Application):
             return 2
         return 0
 
-    def tray_menu(self, icon, button, time):
+    def create_tray(self):
+        # An explicit, full-colour asset also works on dark panel themes.
+        icon_path = str(Path(__file__).resolve().with_name('gf63-control.svg'))
+        self.tray_menu_widget = self.build_tray_menu()
+        for namespace in ('AyatanaAppIndicator3', 'AppIndicator3'):
+            try:
+                gi.require_version(namespace, '0.1')
+                indicator = importlib.import_module('gi.repository.' + namespace)
+            except (ValueError, ImportError):
+                continue
+            self.tray = indicator.Indicator.new(
+                'gf63-control', icon_path, indicator.IndicatorCategory.HARDWARE)
+            self.tray.set_title('GF63 Control · 노트북 제어')
+            self.tray.set_menu(self.tray_menu_widget)
+            self.tray.set_status(indicator.IndicatorStatus.ACTIVE)
+            return
+        # Keep classic XFCE installations working without an indicator library.
+        self.tray = Gtk.StatusIcon.new_from_file(icon_path)
+        self.tray.set_tooltip_text('GF63 Control · 노트북 제어')
+        self.tray.connect('activate', lambda *_: self.activate())
+        self.tray.connect('popup-menu', self.tray_menu)
+
+    def build_tray_menu(self):
         menu = Gtk.Menu()
         for text, callback in [('제어판 열기', lambda *_: self.activate()), ('프로그램 종료', lambda *_: self.quit())]:
             item = Gtk.MenuItem(label=text)
             item.connect('activate', callback)
             menu.append(item)
         menu.show_all()
-        menu.popup(None, None, None, None, button, time)
+        return menu
+
+    def tray_menu(self, icon, button, time):
+        self.tray_menu_widget.popup(None, None, None, None, button, time)
 
     def do_activate(self):
         if self.window is None:

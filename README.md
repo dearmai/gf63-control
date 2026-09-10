@@ -19,8 +19,16 @@ gf63-control
 ```
 
 GUI는 일반 사용자로 실행합니다. sudo로 실행하지 마세요.
-창을 닫으면 트레이에서 계속 실행되며 다음 로그인 때 자동 시작합니다.
-트레이 우클릭 → 프로그램 종료로 완전히 종료할 수 있습니다.
+창을 닫으면 트레이에서 계속 실행됩니다. `gf63-control-setup --startup`을 한 번
+실행하면 XFCE·KDE·GNOME 로그인 때 자동 시작합니다. GNOME에서는 옵션 없는
+`gf63-control-setup`도 앱 자동 실행만 등록합니다. 기존 설치는 이 명령으로 다시 등록하세요.
+트레이 메뉴 → 프로그램 종료로 완전히 종료할 수 있습니다.
+트레이는 AyatanaAppIndicator3 또는 AppIndicator3를 우선 사용하고,
+라이브러리가 없으면 기존 Gtk.StatusIcon을 사용합니다. 전용 컬러 아이콘을 함께 설치합니다.
+GNOME에서는 [AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/)
+확장이 필요합니다. 트레이 메뉴의 **제어판 열기**로 창을 표시할 수 있으며,
+아이콘이 없는 환경에서는 `gf63-control` 명령으로 열 수 있습니다.
+GNOME 트레이 지원은 GNOME 단축키·OSD 지원과는 별개입니다.
 OSD 표시 여부는 기능키·OSD 탭에서 설정하며 다음 실행에도 유지됩니다.
 
 ## 기능

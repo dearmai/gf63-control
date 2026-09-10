@@ -35,6 +35,11 @@ Secure Boot가 켜져 있으면 DKMS 서명 키 등록이 필요할 수 있으�
 설치 스크립트는 Secure Boot를 끄거나 펌웨어 검사를 우회하지 않습니다.
 
 RPM만 수동 설치한 경우, 각 XFCE 사용자 계정에서 `gf63-control-setup`을 한 번 실행하세요.
+GNOME에서는 `gf63-control-setup`이 앱 자동 실행만 등록합니다.
+자동 실행만 별도로 등록하려면 일반 사용자로 `gf63-control-setup --startup`을 실행하세요.
+XFCE·KDE·GNOME에서 지원하며, 기존 설치도 다시 등록해야 GNOME 제한이 해제됩니다.
+자동 실행 파일은 `${XDG_CONFIG_HOME:-~/.config}/autostart/gf63-control.desktop`입니다.
+등록 파일과 데스크톱 인식은 검증했지만 실제 로그아웃·로그인 검증은 미완료입니다.
 현재 PC의 기존 수동 설치가 `/usr/local/bin`에 남아 있으면 `/usr/bin/gf63-control`로
 RPM 버전을 명시적으로 실행합니다. 설치 스크립트가 기존 파일을 임의 삭제하지 않습니다.
 
@@ -206,7 +211,13 @@ GNOME에서 `gf63-control-setup --fonts-startup`으로 로그인 시 적용을 �
 KDE/GNOME 백업은 별개이며 이후 사용자 변경을 보존합니다. 설치된 글꼴은 복원 시 유지합니다.
 KDE에서는 일반 글꼴에 Pretendard, 고정폭·Konsole에 D2Coding을 사용합니다.
 GNOME에서는 일반·문서·창 제목에 Pretendard, 고정폭에 D2Coding을 사용합니다.
-GNOME 지원 범위는 글꼴 설정입니다. 사용자가 따로 지정한 터미널 글꼴은 유지합니다.
+GNOME에서는 글꼴 설정과 AppIndicator 트레이를 지원합니다. 사용자가 따로 지정한 터미널 글꼴은 유지합니다.
+트레이에는 AyatanaAppIndicator3 또는 AppIndicator3 라이브러리와
+[AppIndicator and KStatusNotifierItem Support](https://extensions.gnome.org/extension/615/appindicator-support/)
+확장이 필요합니다. RPM은 `libappindicator-gtk3`를 권장 의존성으로 지정합니다.
+전용 컬러 아이콘이 포함되며 트레이 메뉴에서 제어판을 열거나 프로그램을 종료합니다.
+GNOME 단축키·OSD는 별도 지원 범위입니다. GNOME/X11 세션에서 트레이 서비스 등록과
+아이콘 파일 로딩을 확인했으며, 실제 화면 표시와 XFCE 회귀 시각 검증은 미완료입니다.
 
 KDE는 KConfig 도구, GNOME은 GSettings 스키마와 PyGObject/Pango가 필요합니다.
 적용·복원 후 앱을 재시작하거나 다시 로그인하세요. 상세 범위는 README.md를 참고하세요.
