@@ -116,3 +116,30 @@ class KeyboardTests(unittest.TestCase):
         keyboard.configure()
         self.switch = "'F12'"
         self.assertIn('설정 확인 필요', keyboard.status())
+
+    def test_upgrade_legacy_autostart_preserves_original_backup(self):
+        keyboard.configure()
+        original = keyboard.BACKUP.read_text()
+        keyboard.AUTOSTART.write_text(keyboard.LEGACY_DESKTOP)
+        keyboard.configure()
+        self.assertEqual(keyboard.AUTOSTART.read_text(), keyboard.DESKTOP)
+        self.assertEqual(keyboard.BACKUP.read_text(), original)
+        keyboard.configure(restore=True)
+        self.assertFalse(keyboard.AUTOSTART.exists())
+
+    def test_restore_removes_owned_legacy_autostart(self):
+        keyboard.configure()
+        keyboard.AUTOSTART.write_text(keyboard.LEGACY_DESKTOP)
+        keyboard.configure(restore=True)
+        self.assertFalse(keyboard.AUTOSTART.exists())
+
+    def test_autostart_conflict_does_not_mutate_keyboard(self):
+        keyboard.configure()
+        keyboard.AUTOSTART.write_text(keyboard.LEGACY_DESKTOP + '# user edit\n')
+        original = keyboard.BACKUP.read_text()
+        self.commands.clear()
+        with self.assertRaisesRegex(RuntimeError, '충돌'):
+            keyboard.configure()
+        self.assertEqual(self.commands, [])
+        self.assertEqual(keyboard.BACKUP.read_text(), original)
+        self.assertTrue(keyboard.AUTOSTART.read_text().endswith('# user edit\n'))

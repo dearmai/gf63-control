@@ -20,6 +20,9 @@ OnlyShowIn=XFCE;KDE;
 Terminal=false
 StartupNotify=false
 '''
+# Exact previous app output; do not accept arbitrary files with a matching name.
+LEGACY_DESKTOP = DESKTOP.replace('OnlyShowIn=XFCE;KDE;', 'OnlyShowIn=XFCE;')
+OWNED_DESKTOPS = (DESKTOP, LEGACY_DESKTOP)
 
 
 def run(*args, input=None):
@@ -99,7 +102,7 @@ def configure(restore=False, login=False):
         apply_mapping(state, restore=True)
         if run('gsettings', 'get', SCHEMA, 'switch-keys') == state['installed_switch']:
             run('gsettings', 'set', SCHEMA, 'switch-keys', state['old_switch'])
-        if AUTOSTART.exists() and AUTOSTART.read_text() == DESKTOP:
+        if AUTOSTART.exists() and AUTOSTART.read_text() in OWNED_DESKTOPS:
             if state['old_autostart'] is None:
                 AUTOSTART.unlink()
             else:
@@ -110,6 +113,10 @@ def configure(restore=False, login=False):
         if state is not None:
             apply_mapping(state)
         return
+    current_autostart = AUTOSTART.read_text() if AUTOSTART.exists() else None
+    if (state is not None and current_autostart is not None
+            and current_autostart not in (*OWNED_DESKTOPS, state['old_autostart'])):
+        raise RuntimeError('기존 자동 시작 파일과 충돌합니다: ' + str(AUTOSTART))
     old_switch = run('gsettings', 'get', SCHEMA, 'switch-keys')
     if state is None:
         maps = keymap()
@@ -131,7 +138,7 @@ def configure(restore=False, login=False):
         run('gsettings', 'set', SCHEMA, 'switch-keys', state['installed_switch'])
     apply_mapping(state)
     AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
-    if not AUTOSTART.exists() or AUTOSTART.read_text() in (state['old_autostart'], DESKTOP):
+    if not AUTOSTART.exists() or AUTOSTART.read_text() in (state['old_autostart'], *OWNED_DESKTOPS):
         AUTOSTART.write_text(DESKTOP)
     else:
         raise RuntimeError('기존 자동 시작 파일과 충돌합니다: ' + str(AUTOSTART))
