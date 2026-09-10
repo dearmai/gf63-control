@@ -14,6 +14,9 @@ class KeyboardTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        patcher = patch.object(keyboard, 'start_watcher')
+        self.start_watcher = patcher.start()
+        self.addCleanup(patcher.stop)
         root = Path(self.temp.name)
         for name, value in [('BACKUP', root / 'backup.json'), ('AUTOSTART', root / 'keyboard.desktop')]:
             patcher = patch.object(keyboard, name, value)
@@ -175,3 +178,130 @@ class KeyboardTests(unittest.TestCase):
         self.assertEqual(self.commands, [])
         self.assertEqual(keyboard.BACKUP.read_text(), original)
         self.assertTrue(keyboard.AUTOSTART.read_text().endswith('# user edit\n'))
+
+    def test_all_function_keys_apply_update_restore(self):
+        self.switch = "'Shift+space,F2'"
+        keyboard.configure(function_keys=list(keyboard.FUNCTION_KEYS))
+        self.assertEqual(keyboard.selected_function_keys(), list(keyboard.FUNCTION_KEYS))
+        self.assertIn('F20', keyboard.status())
+        self.assertEqual(self.maps['66'], ['Hangul', 'NoSymbol', 'Hangul'])
+        keyboard.configure(function_keys=['F20'])
+        self.assertEqual(self.switch, "'Shift+space,F2,Hangul,F20'")
+        keyboard.configure(function_keys=[])
+        self.assertEqual(self.switch, "'Shift+space,F2,Hangul'")
+        keyboard.configure(restore=True)
+        self.assertEqual(self.switch, "'Shift+space,F2'")
+
+    def test_function_keys_upgrade_keeps_original_backup(self):
+        keyboard.configure()
+        keyboard.configure(function_keys=['F1', 'F20', 'F1'])
+        keyboard.configure(login=True)
+        keyboard.configure()
+        self.assertEqual(self.switch, "'Shift+space,Hangul,F1,F20'")
+        self.assertEqual(keyboard.selected_function_keys(), ['F1', 'F20'])
+        self.switch = "'Shift+space,Hangul,F1'"
+        self.assertIn('설정 확인 필요', keyboard.status())
+        keyboard.configure(restore=True)
+        self.assertEqual(self.switch, "'Shift+space,Hangul,F1'")
+
+    def test_invalid_function_keys_do_not_mutate(self):
+        for keys in [['F0'], ['F21'], ['F1,Escape'], 'F1']:
+            with self.subTest(keys=keys), self.assertRaises(ValueError):
+                keyboard.configure(function_keys=keys)
+        self.assertEqual(self.commands, [])
+        self.assertFalse(keyboard.BACKUP.exists())
+
+    def test_function_key_changes_preserve_external_switch_settings(self):
+        keyboard.configure(function_keys=['F1'])
+        original = keyboard.BACKUP.read_text()
+        self.switch = "'F12'"
+        for keys in [['F20'], ['F1']]:
+            with self.assertRaisesRegex(RuntimeError, '외부'):
+                keyboard.configure(function_keys=keys)
+        self.assertEqual(self.switch, "'F12'")
+        self.assertEqual(keyboard.BACKUP.read_text(), original)
+
+    def test_oneshot_upgrade_keeps_backup_and_starts_watcher(self):
+        keyboard.configure(function_keys=['F17'])
+        original = keyboard.BACKUP.read_text()
+        keyboard.AUTOSTART.write_text(keyboard.ONESHOT_DESKTOP)
+        keyboard.configure()
+        self.assertEqual(keyboard.BACKUP.read_text(), original)
+        self.assertEqual(keyboard.AUTOSTART.read_text(), keyboard.DESKTOP)
+        self.assertEqual(self.start_watcher.call_count, 2)
+        keyboard.configure(restore=True)
+        self.assertFalse(keyboard.AUTOSTART.exists())
+
+    def test_login_reapplies_reset_switch_keys_without_overwriting_custom(self):
+        keyboard.configure(function_keys=['F17'])
+        self.switch = "'Shift+space'"
+        keyboard.configure(login=True)
+        self.assertEqual(self.switch, "'Shift+space,Hangul,F17'")
+        self.switch = "'F12'"
+        keyboard.configure(login=True)
+        self.assertEqual(self.switch, "'F12'")
+
+    def test_login_does_not_rewrite_an_already_correct_map(self):
+        keyboard.configure()
+        self.commands.clear()
+        keyboard.configure(login=True)
+        self.assertFalse(any(args == ('xmodmap', '-') or args[:2] == ('gsettings', 'set')
+                             for args, _ in self.commands))
+
+    def test_watcher_recovers_late_reset_and_stops_on_restore(self):
+        keyboard.configure(function_keys=['F17'])
+        original = keyboard.BACKUP.read_text()
+        ticks = []
+
+        def tick(seconds):
+            ticks.append(seconds)
+            if len(ticks) == 1:
+                # GNOME resets XKB after the first successful login application.
+                self.maps['66'] = ['Caps_Lock', 'NoSymbol', 'Caps_Lock']
+                self.locks = ['Caps_Lock']
+                self.switch = "'Shift+space'"
+            else:
+                self.assertEqual(self.maps['66'], ['Hangul', 'NoSymbol', 'Hangul'])
+                self.assertEqual(self.locks, [])
+                self.assertEqual(self.switch, "'Shift+space,Hangul,F17'")
+                self.assertEqual(keyboard.BACKUP.read_text(), original)
+                keyboard.configure(restore=True)
+
+        with patch.object(keyboard.time, 'sleep', side_effect=tick):
+            keyboard.watch_login()
+        self.assertEqual(ticks, [2, 2])
+        self.assertEqual(self.maps['66'], ['Caps_Lock', 'NoSymbol', 'Caps_Lock'])
+        self.assertFalse(keyboard.BACKUP.exists())
+
+    def test_watcher_preserves_custom_map_and_stops_for_custom_autostart(self):
+        keyboard.configure()
+        self.maps['66'] = ['Escape']
+        self.switch = "'F12'"
+        with patch.object(keyboard.time, 'sleep',
+                          side_effect=lambda _: keyboard.AUTOSTART.write_text('user change')):
+            keyboard.watch_login()
+        self.assertEqual(self.maps['66'], ['Escape'])
+        self.assertEqual(self.switch, "'F12'")
+
+    def test_watcher_retries_transient_failure_and_bounds_permanent_failure(self):
+        keyboard.configure()
+        with patch.object(keyboard, 'configure', side_effect=[OSError('not ready'), None]), \
+                patch.object(keyboard.time, 'sleep') as sleep:
+            # End the loop after the successful second iteration.
+            sleep.side_effect = lambda _: keyboard.AUTOSTART.unlink() if sleep.call_count == 2 else None
+            keyboard.watch_login()
+            self.assertEqual(sleep.call_count, 2)
+        keyboard.AUTOSTART.write_text(keyboard.DESKTOP)
+        with patch.object(keyboard, 'configure', side_effect=OSError('disconnected')) as apply, \
+                patch.object(keyboard.time, 'sleep'), self.assertRaisesRegex(RuntimeError, '세션'):
+            keyboard.watch_login()
+        self.assertEqual(apply.call_count, 30)
+
+    def test_watcher_skips_wayland_and_duplicate_instance(self):
+        keyboard.configure()
+        self.commands.clear()
+        with patch.object(keyboard.desktop_env, 'x11', return_value=False):
+            keyboard.watch_login()
+        with patch.object(keyboard.fcntl, 'flock', side_effect=BlockingIOError):
+            keyboard.watch_login()
+        self.assertEqual(self.commands, [])

@@ -39,6 +39,9 @@ def main():
     if sys.argv[1:] == ['--restore']:
         import configure_fonts
         configure_fonts.configure(restore=True)
+    if sys.argv[1:] == ['--watch-keyboard']:
+        configure_keyboard.watch_login()
+        return
     if desktop_env.kind() == 'kde' and sys.argv[1:] != ['--apply-keyboard']:
         import configure_kde
         restore = sys.argv[1:] == ['--restore']

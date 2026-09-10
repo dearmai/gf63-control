@@ -13,12 +13,14 @@ import configure_keyboard as keyboard
 import configure_mac as mac
 import desktop_env
 import configure_fonts as fonts
+import install_programs as programs
 
 
 class Control(Gtk.Application):
     def __init__(self):
         super().__init__(application_id='local.gf63.Control', flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self.program_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.pending = False
         self.state = {}
         self.window = None
@@ -127,6 +129,7 @@ class Control(Gtk.Application):
         self.keyboard_settings()
         self.mac_settings()
         self.font_settings()
+        self.program_settings()
 
     def add_section(self, box, title):
         label = Gtk.Label()
@@ -327,9 +330,17 @@ class Control(Gtk.Application):
         self.add_section(settings, '한영 전환')
         keyboard_note = Gtk.Label(label='한/영 또는 Caps Lock 키로 한국어와 영어를 전환합니다.\n'
                                        'Caps Lock의 대문자 고정 기능은 해제됩니다.\n'
+                                       'F1~F20을 추가 선택한 뒤 적용하세요. 기존 앱 단축키와 겹칠 수 있습니다.\n'
                                        'IBus에서 한글 입력기를 선택한 상태에서 사용하세요.', xalign=0)
         keyboard_note.set_line_wrap(True)
         settings.pack_start(keyboard_note, False, False, 0)
+        function_grid = Gtk.Grid(column_spacing=8, row_spacing=4)
+        self.keyboard_function_keys = {}
+        for index, key in enumerate(keyboard.FUNCTION_KEYS):
+            toggle = Gtk.CheckButton(label=key)
+            self.keyboard_function_keys[key] = toggle
+            function_grid.attach(toggle, index % 5, index // 5, 1, 1)
+        settings.pack_start(function_grid, False, False, 0)
         self.keyboard_status = Gtk.Label(label='설정 확인 중…', xalign=0)
         self.keyboard_status.set_line_wrap(True)
         self.keyboard_status.set_max_width_chars(65)
@@ -337,7 +348,7 @@ class Control(Gtk.Application):
         keyboard_buttons = Gtk.Box(spacing=8)
         self.keyboard_buttons = []
         self.keyboard_busy = False
-        for title, operation in [('한/영 + Caps Lock 적용', 'apply'),
+        for title, operation in [('선택한 한영 전환 키 적용', 'apply'),
                                  ('원래 키 설정 복원', 'restore'), ('상태 확인', 'status')]:
             button = Gtk.Button(label=title)
             button.connect('clicked', lambda _, op=operation: self.keyboard_settings(op))
@@ -372,7 +383,93 @@ class Control(Gtk.Application):
         self.history = Gtk.Label(label='최근 상태 변화가 여기에 표시됩니다.', xalign=0)
         self.history.set_selectable(True)
         settings.pack_start(self.history, False, False, 0)
+        self.build_program_tab(notebook)
         self.update_ui()
+
+    def build_program_tab(self, notebook):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16, margin=20)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(box)
+        notebook.append_page(scroll, Gtk.Label(label='프로그램 설치'))
+        self.add_section(box, '카카오톡 (Wine)')
+        note = Gtk.Label(label='Windows 카카오톡을 이 컴퓨터에서 실행합니다.\n'
+                               'Wine 실행 환경, 공식 카카오톡, 한글 글꼴과 앱 메뉴를 설정합니다.\n'
+                               '인터넷 연결이 필요하며 첫 설치에는 수 분과 수 GB의 공간이 필요합니다.\n'
+                               '설치 후 카카오 계정 로그인은 직접 진행하세요.', xalign=0)
+        note.set_line_wrap(True)
+        box.pack_start(note, False, False, 0)
+        link = Gtk.LinkButton.new_with_label('https://www.kakaocorp.com/page/service/all', '카카오톡 공식 다운로드 안내')
+        link.set_halign(Gtk.Align.START)
+        box.pack_start(link, False, False, 0)
+        self.program_status = Gtk.Label(label='설치 상태 확인 중…', xalign=0)
+        self.program_status.set_line_wrap(True)
+        self.program_status.set_max_width_chars(65)
+        self.program_status.set_selectable(True)
+        box.pack_start(self.program_status, False, False, 0)
+        self.program_spinner = Gtk.Spinner()
+        self.program_spinner.set_halign(Gtk.Align.START)
+        box.pack_start(self.program_spinner, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        self.program_buttons = []
+        self.program_busy = False
+        for title, operation in [('설치 / 설정 복구', 'install'), ('카카오톡 실행', 'launch'), ('상태 확인', 'status')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.program_settings(op))
+            buttons.pack_start(button, False, False, 0)
+            self.program_buttons.append(button)
+        box.pack_start(buttons, False, False, 0)
+
+        font_buttons = Gtk.Box(spacing=8)
+        for title, operation in [('Pretendard · 글꼴 다듬기 적용', 'fonts'), ('Wine 설정 열기', 'wine-settings')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.program_settings(op))
+            font_buttons.pack_start(button, False, False, 0)
+            self.program_buttons.append(button)
+        box.pack_start(font_buttons, False, False, 0)
+        note = Gtk.Label(label='글꼴만 적용하면 카카오톡을 재설치하지 않습니다.\n'
+                               '영문·한글 UI는 Pretendard로, 글꼴 다듬기는 ClearType RGB로 설정합니다.\n'
+                               '적용 후 카카오톡을 트레이에서도 완전히 종료하고 다시 실행하세요.', xalign=0)
+        note.set_line_wrap(True)
+        box.pack_start(note, False, False, 0)
+
+    def program_settings(self, operation='status'):
+        if self.program_busy:
+            return
+        self.program_busy = True
+        for button in self.program_buttons:
+            button.set_sensitive(False)
+        self.program_spinner.start()
+        self.program_status.set_text('설치 상태 확인 중…' if operation == 'status' else '처리 중…')
+        def progress(message):
+            GLib.idle_add(self.program_progress, message)
+        def work():
+            if operation == 'install':
+                return programs.install(progress)
+            if operation == 'launch':
+                return programs.launch()
+            if operation == 'fonts':
+                return programs.repair_fonts()
+            if operation == 'wine-settings':
+                return programs.open_wine_settings()
+            return programs.status()
+        future = self.program_pool.submit(work)
+        future.add_done_callback(lambda result: GLib.idle_add(self.program_finished, result))
+
+    def program_progress(self, message):
+        self.program_status.set_text(message)
+        return False
+
+    def program_finished(self, future):
+        self.program_busy = False
+        self.program_spinner.stop()
+        for button in self.program_buttons:
+            button.set_sensitive(True)
+        try:
+            self.program_status.set_text(future.result())
+        except Exception as exc:
+            self.program_status.set_text('프로그램 설치·실행 실패: ' + str(exc)[-1500:])
+        return False
 
     def font_settings(self, operation='status'):
         if self.font_busy:
@@ -430,26 +527,34 @@ class Control(Gtk.Application):
         if self.keyboard_busy:
             return
         self.keyboard_busy = True
+        selected = [key for key, toggle in self.keyboard_function_keys.items() if toggle.get_active()]
+        for toggle in self.keyboard_function_keys.values():
+            toggle.set_sensitive(False)
         self.keyboard_status.set_text('설정 확인 중…' if operation == 'status' else '키 설정 변경 중…')
         for button in self.keyboard_buttons:
             button.set_sensitive(False)
 
         def work():
             if operation == 'apply':
-                keyboard.configure()
+                keyboard.configure(function_keys=selected)
             elif operation == 'restore':
                 keyboard.configure(restore=True)
-            return keyboard.status()
+            return keyboard.status(), keyboard.selected_function_keys()
 
         future = self.pool.submit(work)
         future.add_done_callback(lambda result: GLib.idle_add(self.keyboard_finished, result))
 
     def keyboard_finished(self, future):
         self.keyboard_busy = False
+        for toggle in self.keyboard_function_keys.values():
+            toggle.set_sensitive(True)
         for button in self.keyboard_buttons:
             button.set_sensitive(True)
         try:
-            self.keyboard_status.set_text(future.result())
+            message, selected = future.result()
+            self.keyboard_status.set_text(message)
+            for key, toggle in self.keyboard_function_keys.items():
+                toggle.set_active(key in selected)
         except Exception as exc:
             self.keyboard_status.set_text('한영 전환 설정 실패: ' + str(exc))
         return False
@@ -562,6 +667,7 @@ class Control(Gtk.Application):
             '켜짐' if self.state.get('no_turbo') == 0 else '꺼짐', self.state.get('fan') or '지원 안 됨'))
 
     def do_shutdown(self):
+        self.program_pool.shutdown(wait=False)
         self.pool.shutdown(wait=False)
         Gtk.Application.do_shutdown(self)
 

@@ -10,6 +10,11 @@ import mac_shortcut as shortcut
 
 class ConfigurationTests(unittest.TestCase):
     def setUp(self):
+        # These tests exercise XFCE settings, independently of the host desktop.
+        for name, value in [('kind', 'xfce'), ('x11', True)]:
+            patcher = patch.object(config.desktop_env, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.values = {'/commands/custom/override': 'true', '/xfwm4/custom/override': 'true',
