@@ -9,6 +9,9 @@ import configure_keyboard as keyboard
 
 class KeyboardTests(unittest.TestCase):
     def setUp(self):
+        patcher = patch.object(keyboard.desktop_env, 'x11', return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
@@ -132,6 +135,35 @@ class KeyboardTests(unittest.TestCase):
         keyboard.AUTOSTART.write_text(keyboard.LEGACY_DESKTOP)
         keyboard.configure(restore=True)
         self.assertFalse(keyboard.AUTOSTART.exists())
+
+    def test_upgrade_pre_gnome_autostart_login_and_restore(self):
+        keyboard.configure()
+        original = keyboard.BACKUP.read_text()
+        keyboard.AUTOSTART.write_text(keyboard.PRE_GNOME_DESKTOP)
+        self.assertIn('자동 적용 설정을 확인', keyboard.status())
+        keyboard.configure()
+        self.assertIn('OnlyShowIn=XFCE;KDE;GNOME;', keyboard.AUTOSTART.read_text())
+        self.assertEqual(keyboard.BACKUP.read_text(), original)
+        self.maps['66'] = ['Caps_Lock', 'NoSymbol', 'Caps_Lock']
+        self.locks = ['Caps_Lock']
+        keyboard.configure(login=True)
+        self.assertEqual(self.maps['66'], ['Hangul', 'NoSymbol', 'Hangul'])
+        self.assertEqual(self.locks, [])
+        keyboard.configure(restore=True)
+        self.assertFalse(keyboard.AUTOSTART.exists())
+        self.assertEqual(self.maps['66'], ['Caps_Lock', 'NoSymbol', 'Caps_Lock'])
+
+    def test_wayland_login_skips_mapping_and_apply_reports_unsupported(self):
+        keyboard.configure()
+        original = keyboard.BACKUP.read_text()
+        self.commands.clear()
+        with patch.object(keyboard.desktop_env, 'x11', return_value=False):
+            keyboard.configure(login=True)
+            self.assertIn('Wayland', keyboard.status())
+            with self.assertRaisesRegex(RuntimeError, 'X11'):
+                keyboard.configure()
+        self.assertEqual(self.commands, [])
+        self.assertEqual(keyboard.BACKUP.read_text(), original)
 
     def test_autostart_conflict_does_not_mutate_keyboard(self):
         keyboard.configure()

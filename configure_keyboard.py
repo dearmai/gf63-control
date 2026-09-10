@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import desktop_env
 
 CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
 BACKUP = CONFIG / 'gf63-control/keyboard-backup.json'
@@ -16,13 +17,14 @@ Type=Application
 Name=GF63 Control Korean Keyboard
 Comment=Use Caps Lock for Korean/English switching
 Exec=/usr/bin/python3 /usr/share/gf63-control/configure_xfce.py --apply-keyboard
-OnlyShowIn=XFCE;KDE;
+OnlyShowIn=XFCE;KDE;GNOME;
 Terminal=false
 StartupNotify=false
 '''
 # Exact previous app output; do not accept arbitrary files with a matching name.
-LEGACY_DESKTOP = DESKTOP.replace('OnlyShowIn=XFCE;KDE;', 'OnlyShowIn=XFCE;')
-OWNED_DESKTOPS = (DESKTOP, LEGACY_DESKTOP)
+PRE_GNOME_DESKTOP = DESKTOP.replace('OnlyShowIn=XFCE;KDE;GNOME;', 'OnlyShowIn=XFCE;KDE;')
+LEGACY_DESKTOP = DESKTOP.replace('OnlyShowIn=XFCE;KDE;GNOME;', 'OnlyShowIn=XFCE;')
+OWNED_DESKTOPS = (DESKTOP, PRE_GNOME_DESKTOP, LEGACY_DESKTOP)
 
 
 def run(*args, input=None):
@@ -95,6 +97,10 @@ def apply_mapping(state, restore=False):
 
 
 def configure(restore=False, login=False):
+    if not desktop_env.x11():
+        if login:
+            return  # Do not change an Xwayland-only map in a Wayland session.
+        raise RuntimeError('한/영 + Caps Lock 설정은 X11 전용입니다. GNOME on Xorg 세션에서 사용하세요.')
     state = json.loads(BACKUP.read_text()) if BACKUP.exists() else None
     if restore:
         if state is None:
@@ -147,6 +153,8 @@ def configure(restore=False, login=False):
 
 def status():
     """Read actual mapping and persistence for the control panel."""
+    if not desktop_env.x11():
+        return 'X11 전용 · Wayland에서는 한/영 + Caps Lock 자동 적용을 지원하지 않습니다.'
     if not BACKUP.exists():
         return '미설정 · 한/영 + Caps Lock 적용 버튼으로 설정하세요.'
     state = json.loads(BACKUP.read_text())
