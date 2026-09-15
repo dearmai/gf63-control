@@ -10,6 +10,19 @@ GitHub Releases에서 `gf63-control-1.3.0-rocky9-x86_64.tar.gz`를 내려받아 
 Rocky Linux 9 + XFCE에 로그인한 일반 사용자 터미널에서 `./install.sh`를 실행합니다.
 의존 패키지를 다운로드하므로 인터넷 연결이 필요합니다. 자세한 내용은 [재설치 안내](REUSE.md)를 참고하세요.
 
+소스 저장소에서는 Rocky Linux 9 데스크톱의 일반 사용자 터미널에서 실행합니다.
+
+```sh
+sudo dnf install make rpm-build python3
+make install
+```
+
+RPM을 빌드하고 기존 설치 스크립트로 앱·드라이버·번들 글꼴을 설치합니다.
+시스템 설치 단계에서만 sudo를 사용합니다. GNOME에서는 로그인 자동 실행을 등록하고
+앱을 트레이 모드로 실행합니다. 트레이 아이콘에는 아래의 AppIndicator 확장이 필요합니다.
+글꼴만 설치하려면 `make install-fonts`, 빌드만 하려면 `make build`를 사용하세요.
+글꼴 설치는 기본 글꼴 설정을 변경하지 않습니다.
+
 ## 실행
 
 응용 프로그램 메뉴의 **GF63 노트북 제어**, `Super+F10`, 또는 다음 명령으로 엽니다.
@@ -310,13 +323,14 @@ PowerDevil 전체 세션의 실제 덮개 개폐, 물리 키, KDE 6 및 Wayland 
 
 제어판 **기능키 · OSD → KDE · GNOME · Konsole 글꼴 → 설치 및 적용**을 사용하세요.
 패키지에 **Pretendard 1.3.9**의 9개 OTF 굵기와 **D2Coding 1.3.3**의
-Regular/Bold TTF를 포함합니다. 인터넷 연결이나 관리자 권한 없이 설치합니다.
+기본형과 **D2Coding Ligature**의 Regular/Bold TTF를 포함합니다. 인터넷 연결이나 관리자 권한 없이 설치합니다.
 공식 배포본은 변경하지 않았으며, 두 글꼴의 SIL Open Font License 1.1과 원본 정보,
 SHA256 목록도 `vendor/fonts/`에 포함합니다. 프로젝트 MIT 라이선스와 별개입니다.
 
 RPM에는 `/usr/share/gf63-control/vendor/fonts/`로 포함하며 설치·적용 버튼은 파일을
 검증한 뒤 `$XDG_DATA_HOME/fonts/gf63-control/`(기본 `~/.local/share/fonts/gf63-control/`)에
 복사하고 fontconfig 캐시를 갱신합니다. 다른 사용자 글꼴은 수정하지 않습니다.
+기존 설치에는 누락된 글꼴만 추가하며, Ligature는 앱의 글꼴 선택에서 사용할 수 있습니다.
 이미 설치된 앱 전용 파일이 달라졌으면 덮어쓰지 않고 오류를 표시합니다.
 소스 아카이브, SRPM, 설치 번들에도 같은 리소스를 포함합니다.
 

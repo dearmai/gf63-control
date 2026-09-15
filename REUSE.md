@@ -83,6 +83,12 @@ gf63-control
 
 ## 재빌드
 
+소스 저장소에서 `sudo dnf install make rpm-build python3` 후 일반 사용자로
+`make install`을 실행하면 RPM 빌드부터 앱·드라이버·번들 글꼴 설치까지 진행합니다.
+GNOME에서는 로그인 자동 실행을 등록하고 트레이 모드로 실행합니다.
+아이콘 표시에는 GNOME AppIndicator 확장이 필요합니다([README.md](README.md#실행)).
+`make install-fonts`는 사용자 글꼴만 설치하며 기본 글꼴 설정은 바꾸지 않습니다.
+
 소스 압축을 풀고 Rocky 9에서 실행합니다.
 
 ```sh
@@ -238,7 +244,7 @@ PowerDevil 전체 세션의 실제 덮개 개폐, 물리 키, KDE 6 및 Wayland 
 
 ### KDE · GNOME 글꼴과 GNOME 자동 시작
 
-Pretendard 1.3.9(9개 OTF)와 D2Coding 1.3.3(Regular/Bold TTF)을 RPM·소스·설치 번들에
+Pretendard 1.3.9(9개 OTF)와 D2Coding 1.3.3(기본형·Ligature 각각 Regular/Bold TTF)을 RPM·소스·설치 번들에
 포함합니다. 원본과 SIL OFL 1.1 라이선스는 `vendor/fonts/`에 있으며 프로젝트 MIT와 별개입니다.
 `gf63-control-setup --fonts` 또는 제어판의 **설치 및 적용**으로 오프라인 설치·적용합니다.
 RPM 안의 `/usr/share/gf63-control/vendor/fonts/`에서 사용자 글꼴 폴더로 복사하므로

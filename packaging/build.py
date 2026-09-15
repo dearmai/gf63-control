@@ -16,7 +16,7 @@ def main():
     for folder in ('SOURCES', 'SPECS', 'BUILD', 'BUILDROOT', 'RPMS', 'SRPMS'):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
     DIST.mkdir(exist_ok=True)
-    files = [p for p in ROOT.iterdir() if p.suffix in ('.py', '.desktop', '.policy', '.svg') or p.name in ('README.md', 'REUSE.md', 'AGENTS.md', 'LICENSE')]
+    files = [p for p in ROOT.iterdir() if p.suffix in ('.py', '.desktop', '.policy', '.svg') or p.name in ('Makefile', 'README.md', 'REUSE.md', 'AGENTS.md', 'LICENSE')]
     files += [p for folder in ('packaging', 'vendor') for p in (ROOT / folder).rglob('*')
               if p.is_file() and '__pycache__' not in p.parts]
     source = BUILD / 'SOURCES' / (NAME + '.tar.gz')

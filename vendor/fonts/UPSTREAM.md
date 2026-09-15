@@ -5,7 +5,7 @@ The project MIT license does not replace these font licenses.
 
 - Pretendard 1.3.9: all nine static OTF weights, with LICENSE.txt.
   https://github.com/orioncactus/pretendard/releases/tag/v1.3.9
-- D2Coding 1.3.3 (20260725): standard Regular/Bold TTF, with OFL.txt.
+- D2Coding 1.3.3 (20260725): standard and Ligature Regular/Bold TTF, with OFL.txt.
   https://github.com/naver/d2-coding-font/releases/tag/VER1.3.3
 
 Downloaded from the official release assets. SHA256.json records each bundled

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 RESOURCES = Path(__file__).resolve().parent / 'vendor/fonts'
@@ -31,28 +32,59 @@ def install():
     files = contents()  # Validate the whole bundle before writing anything.
     if DESTINATION.is_symlink():
         raise RuntimeError('글꼴 설치 경로가 심볼릭 링크입니다.')
-    if DESTINATION.exists():
-        if any(not (DESTINATION / name).is_file() or (DESTINATION / name).read_bytes() != data
-               for name, data in files.items()):
-            raise RuntimeError('기존 GF63 글꼴 파일이 다릅니다. 사용자 파일을 유지했습니다: ' + str(DESTINATION))
-        return '패키지 글꼴 설치 확인 완료'
+    existing = DESTINATION.exists()
+    if existing:
+        for name, data in files.items():
+            path = DESTINATION / name
+            if (any(parent.is_symlink() for parent in (path, *path.parents)
+                    if parent == DESTINATION or DESTINATION in parent.parents)
+                    or (path.exists() and (not path.is_file() or path.read_bytes() != data))):
+                raise RuntimeError('기존 GF63 글꼴 파일이 다릅니다. 사용자 파일을 유지했습니다: ' + str(DESTINATION))
+        files = {name: data for name, data in files.items() if not (DESTINATION / name).exists()}
+        if not files:
+            return '패키지 글꼴 설치 확인 완료'
     DESTINATION.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix='.gf63-fonts-', dir=DESTINATION.parent))
     created = False
+    added = []
+    directories = []
     try:
         for name, data in files.items():
             path = temporary / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-        os.rename(temporary, DESTINATION)
-        created = True
+        if existing:
+            for name in files:
+                target = DESTINATION / name
+                for parent in reversed(target.parents):
+                    if DESTINATION in parent.parents and not parent.exists():
+                        parent.mkdir()
+                        directories.append(parent)
+                os.link(temporary / name, target)
+                added.append(target)
+        else:
+            os.rename(temporary, DESTINATION)
+            created = True
         subprocess.run(['fc-cache', '-f', str(DESTINATION)], check=True,
                        text=True, capture_output=True, timeout=30)
     except Exception:
+        for path in reversed(added):
+            path.unlink()
+        for path in reversed(directories):
+            path.rmdir()
         if created:
             shutil.rmtree(DESTINATION)
         raise
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
-    return '패키지 글꼴 설치 완료 (Pretendard · D2Coding)'
+    return '패키지 글꼴 설치 완료 (Pretendard · D2Coding · D2Coding Ligature)'
+
+
+if __name__ == '__main__':
+    if os.geteuid() == 0:
+        sys.exit('일반 사용자로 실행하세요. sudo를 붙이지 마세요.')
+    try:
+        print(install())
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        sys.exit(str(exc))
