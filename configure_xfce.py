@@ -36,9 +36,18 @@ def main():
     if sys.argv[1:] in (['--mac-shortcuts'], ['--restore-mac-shortcuts']):
         print(configure_mac.configure(restore=sys.argv[1] == '--restore-mac-shortcuts'))
         return
+    if sys.argv[1:] in (['--capture-shortcut'], ['--restore-capture-shortcut']):
+        import configure_cinnamon
+        print(configure_cinnamon.configure(restore=sys.argv[1] == '--restore-capture-shortcut'))
+        return
     if sys.argv[1:] == ['--restore']:
         import configure_fonts
         configure_fonts.configure(restore=True)
+        if desktop_env.kind() == 'cinnamon':
+            import configure_cinnamon
+            print(configure_cinnamon.configure(restore=True))
+            configure_keyboard.configure(restore=True)
+            return
     if sys.argv[1:] == ['--watch-keyboard']:
         configure_keyboard.watch_login()
         return

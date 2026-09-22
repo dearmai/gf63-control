@@ -17,7 +17,7 @@ if [ "$#" -eq 1 ] && [ "$1" = --startup ]; then
     echo 'GF63 Control 로그인 자동 실행을 등록했습니다.'
     exit 0
 fi
-if [ "$#" -eq 1 ] && { [ "$1" = --fonts ] || [ "$1" = --restore-fonts ] || [ "$1" = --fonts-startup ] || [ "$1" = --no-fonts-startup ]; }; then
+if [ "$#" -eq 1 ] && { [ "$1" = --fonts ] || [ "$1" = --restore-fonts ] || [ "$1" = --fonts-startup ] || [ "$1" = --no-fonts-startup ] || [ "$1" = --capture-shortcut ] || [ "$1" = --restore-capture-shortcut ]; }; then
     exec /usr/bin/python3 /usr/share/gf63-control/configure_xfce.py "$@"
 fi
 if [ "${1:-}" = --restore ]; then

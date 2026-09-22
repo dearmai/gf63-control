@@ -11,6 +11,7 @@ from gi.repository import Gtk, Gdk, Gio, GLib
 import gf63_core as core
 import configure_keyboard as keyboard
 import configure_mac as mac
+import configure_cinnamon as cinnamon
 import desktop_env
 import configure_fonts as fonts
 import install_programs as programs
@@ -133,6 +134,7 @@ class Control(Gtk.Application):
         self.window.show_all()
         self.window.present()
         self.keyboard_settings()
+        self.capture_settings()
         self.mac_settings()
         self.font_settings()
         self.program_settings()
@@ -360,6 +362,7 @@ class Control(Gtk.Application):
             keyboard_buttons.pack_start(button, False, False, 0)
             self.keyboard_buttons.append(button)
         settings.pack_start(keyboard_buttons, False, False, 0)
+        self.build_capture_section(settings)
         self.add_section(settings, '기능키와 OSD')
         explanation = Gtk.Label(xalign=0)
         explanation.set_text('밝기·음량·음소거·마이크·키보드 조명 키를 연결합니다.\n'
@@ -594,6 +597,68 @@ class Control(Gtk.Application):
             self.mac_terminal.set_active(mode == 'clipboard')
         except Exception as exc:
             self.mac_status.set_text('Mac 단축키 설정 실패: ' + str(exc))
+        return False
+
+    def build_capture_section(self, settings):
+        self.add_section(settings, '화면 영역 캡처')
+        note = Gtk.Label(label='단축키를 누르면 영역을 선택해 클립보드로 바로 복사합니다.\n'
+                               '파일로 저장하지 않으므로 그대로 붙여넣을 수 있습니다.\n'
+                               'Cinnamon 세션에서만 지원하며 다른 기능이 쓰는 키는 거부합니다.', xalign=0)
+        note.set_line_wrap(True)
+        settings.pack_start(note, False, False, 0)
+        self.capture_choice = Gtk.ComboBoxText()
+        for binding, label in cinnamon.CHOICES:
+            self.capture_choice.append(binding, label)
+        self.capture_choice.set_active_id(cinnamon.DEFAULT)
+        self.capture_choice.set_halign(Gtk.Align.START)
+        settings.pack_start(self.capture_choice, False, False, 0)
+        self.capture_status = Gtk.Label(label='설정 확인 중…', xalign=0)
+        self.capture_status.set_line_wrap(True)
+        self.capture_status.set_max_width_chars(65)
+        settings.pack_start(self.capture_status, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        self.capture_buttons = []
+        self.capture_busy = False
+        for title, operation in [('선택한 캡처 단축키 적용', 'apply'),
+                                 ('원래 설정 복원', 'restore'), ('상태 확인', 'status')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.capture_settings(op))
+            buttons.pack_start(button, False, False, 0)
+            self.capture_buttons.append(button)
+        settings.pack_start(buttons, False, False, 0)
+
+    def capture_settings(self, operation='status'):
+        if self.capture_busy:
+            return
+        self.capture_busy = True
+        binding = self.capture_choice.get_active_id()
+        self.capture_choice.set_sensitive(False)
+        for button in self.capture_buttons:
+            button.set_sensitive(False)
+        self.capture_status.set_text('설정 확인 중…' if operation == 'status' else '단축키 설정 중…')
+
+        def work():
+            if operation == 'apply':
+                return cinnamon.configure(binding), cinnamon.selected()
+            if operation == 'restore':
+                return cinnamon.configure(restore=True), cinnamon.selected()
+            return cinnamon.status(), cinnamon.selected()
+
+        future = self.pool.submit(work)
+        future.add_done_callback(lambda result: GLib.idle_add(self.capture_finished, result))
+
+    def capture_finished(self, future):
+        self.capture_busy = False
+        self.capture_choice.set_sensitive(True)
+        for button in self.capture_buttons:
+            button.set_sensitive(True)
+        try:
+            message, current = future.result()
+            self.capture_status.set_text(message)
+            if current:
+                self.capture_choice.set_active_id(current)
+        except Exception as exc:
+            self.capture_status.set_text('캡처 단축키 설정 실패: ' + str(exc))
         return False
 
     def keyboard_settings(self, operation='status'):

@@ -16,7 +16,7 @@ BUILD = ROOT / '.build' / NAME / 'deb'
 SHARED = ['gf63_control.py', 'gf63_core.py', 'configure_xfce.py', 'configure_keyboard.py',
           'configure_lid.py', 'configure_mac.py', 'mac_shortcut.py', 'desktop_env.py',
           'configure_kde.py', 'configure_kde_lid.py', 'configure_fonts.py', 'install_fonts.py',
-          'install_programs.py', 'install_graphics.py', 'gf63-control-autostart.desktop', 'gf63-control.svg']
+          'install_programs.py', 'install_graphics.py', 'configure_cinnamon.py', 'gf63-control-autostart.desktop', 'gf63-control.svg']
 DRIVER_SOURCES = ['msi-ec.c', 'ec_memory_configuration.h', 'Makefile', 'dkms.conf', 'UPSTREAM']
 
 

@@ -14,6 +14,8 @@ XFCE shortcuts, PipeWire/WirePlumber, TuneD, and a firmware-matched msi-ec drive
 - `gf63_helper.py`: isolated Python root helper, fixed action/value allowlists.
 - `local.gf63.control.policy`: authorization for the exact installed helper path.
 - `configure_xfce.py`: per-user settings with backup and conditional restoration.
+- `configure_cinnamon.py`: Cinnamon screenshot keybindings through GSettings, with a
+  fixed accelerator allowlist and ownership-aware restore.
 - `battery_limit.py`: standalone CLI retained for terminal users.
 - `install_graphics.py`: read-only NVIDIA driver diagnosis; installation is handed
   to a terminal where the user runs sudo, never to the root helper.
@@ -48,6 +50,8 @@ XFCE power manager owns brightness/keyboard-brightness keys even when its handli
 option is disabled. Keep native brightness handling and observe changes for OSD.
 Discover PulseAudio panel plugin IDs dynamically. Never assume `plugin-8` elsewhere.
 Keep existing unrelated shortcuts and only restore values still owned by this app.
+Cinnamon keybindings are GSettings string arrays. Write only accelerators from the module's
+fixed list, refuse one another Cinnamon action already holds, and read the value back.
 
 Keep GTK work on the main thread and blocking I/O on the worker. Bound subprocess
 execution time. Show failures and unavailable controls rather than claiming success.
@@ -120,10 +124,11 @@ contents before a public release.
 
 - RPM targets Rocky 9 and the deb track targets the Debian/Ubuntu family; the deb track has
   seen far less use, and other distributions, architectures and EC versions are untested.
-- Cinnamon support covers screen-lock detection and OSD suppression only. It has no xfconf,
-  so `gf63-control-setup` registers autostart and skips bindings there; Fn-key remapping and
-  power-manager integration remain XFCE/KDE only. Adding them needs a `configure_cinnamon.py`
-  built on `org.cinnamon.desktop.keybindings`, mirroring `configure_kde.py`.
+- Cinnamon support covers screen-lock detection, OSD suppression and the screenshot
+  keybinding in `configure_cinnamon.py`. It has no xfconf, so `gf63-control-setup` registers
+  autostart and skips other bindings there; Fn-key remapping and power-manager integration
+  remain XFCE/KDE only. Extending `configure_cinnamon.py` to the rest of
+  `org.cinnamon.desktop.keybindings` is the next step, mirroring `configure_kde.py`.
 - Korean input supports IBus (`org.freedesktop.ibus.engine.hangul` `switch-keys`) and nimf
   (`org.nimf.engines.nimf-libhangul` `shortcuts-to-lang`/`shortcuts-to-sys`), detected per
   session and recorded in the backup. nimf's key table stops at F12, so F13-F20 switching is
