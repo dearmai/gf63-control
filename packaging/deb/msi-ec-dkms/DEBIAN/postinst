@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    if ! dkms status -m msi_ec -v 0.13 | grep -q .; then
+        dkms add -m msi_ec -v 0.13 || echo 'msi-ec: DKMS registration failed' >&2
+    fi
+    if test -d /lib/modules/"$(uname -r)"/build; then
+        dkms install -m msi_ec -v 0.13 -k "$(uname -r)" || echo 'msi-ec: build failed; inspect dkms status and make.log' >&2
+    else
+        echo "msi-ec: install linux-headers-$(uname -r), then run dkms install msi_ec/0.13" >&2
+    fi
+    modprobe msi-ec || echo 'msi-ec: module load failed; check firmware support and Secure Boot' >&2
+fi
+exit 0

@@ -2,7 +2,9 @@
 
 ## Scope and architecture
 
-This project targets Rocky Linux 9 x86_64 with XFCE/X11 on MSI Thin GF63 12VE.
+This project targets MSI Thin GF63 12VE on two packaging tracks: Rocky Linux 9 x86_64
+with XFCE/X11 (primary, best tested) and Debian/Ubuntu-family x86_64 via apt (secondary,
+validated on HamoniKR 8 / Linux Mint 22 with Cinnamon).
 The tested EC firmware is `16R8IMS1.108`; do not assume every GF63 firmware is compatible.
 The application uses Python 3.9+, GTK 3 through PyGObject, standard sysfs interfaces,
 XFCE shortcuts, PipeWire/WirePlumber, TuneD, and a firmware-matched msi-ec driver.
@@ -14,6 +16,8 @@ XFCE shortcuts, PipeWire/WirePlumber, TuneD, and a firmware-matched msi-ec drive
 - `configure_xfce.py`: per-user settings with backup and conditional restoration.
 - `battery_limit.py`: standalone CLI retained for terminal users.
 - `packaging/`: binary/source RPM build and reusable installation bundle.
+- `packaging/build_deb.py`, `packaging/deb/`, `packaging/install-deb.sh`: the apt track's
+  package build, `DEBIAN` metadata/maintainer scripts and bundle installer.
 - `vendor/msi-ec/`: upstream driver source, license and pinned commit provenance.
 
 ## Implementation boundaries
@@ -65,6 +69,21 @@ Use `python3 packaging/build.py` on Rocky Linux 9 with `rpm-build` installed.
 The build runs unit tests and emits GUI/CLI and DKMS RPMs, an SRPM, source archive,
 an installation script, and SHA256 manifests under `dist/`.
 
+On Debian/Ubuntu family use `python3 packaging/build_deb.py` with `dpkg-dev` installed;
+`make check-env` and `make check-env-deb` gate each track, and `make install-deb` is the
+apt-side counterpart of `make install`. The deb build runs the unit tests itself, since
+there is no `%check` equivalent. Both tracks must install the identical layout, including
+`/usr/libexec/gf63-control-helper`, which the polkit policy and `gf63_core.py` hardcode;
+only the systemd unit path differs (`/usr/lib/systemd/system`). Normalize permissions in
+the staged tree so the build user's umask cannot leak into the package.
+Debian dependency names are mapped, not copied: `python3-gobject`/`gtk3` become
+`python3-gi`/`gir1.2-gtk-3.0`, `polkit` becomes `polkitd | policykit-1` plus `pkexec`,
+`kernel-devel` has no fixed name so the DKMS postinst checks `/lib/modules/$(uname -r)/build`.
+Packages whose names drift across derivatives (`tuned`, `ibus-hangul`, audio firmware,
+appindicator, the XFCE set) are `Recommends`, not `Depends`, so one missing name on a
+derivative cannot abort the whole transaction; the app must keep reporting those controls
+as unavailable rather than failing.
+
 Maintain the canonical `/usr/bin`, `/usr/share/gf63-control`, and `/usr/libexec` paths.
 The old `/usr/local` installation is legacy; do not package personal home paths.
 The installer runs as a desktop user and uses sudo only for system installation.
@@ -72,6 +91,9 @@ RPM scriptlets must not write another user's XFCE configuration.
 
 When changing versions, update the spec's version/release and exact driver dependency,
 the build script's archive naming, `%setup` source directory, and REUSE.md examples.
+Mirror the same bump in `packaging/deb/*/DEBIAN/control`, `packaging/build_deb.py`
+(`NAME`, `VERSION`, `DRIVER_VERSION`) and `packaging/REUSE-debian.md`, which all carry
+literal versions the way the spec does.
 Preserve upgrade/removal semantics and the pinned upstream commit/license.
 Do not ship binaries compiled only for the build machine's kernel; DKMS builds on target.
 
@@ -88,7 +110,14 @@ contents before a public release.
 
 ## Known limits and improvement areas
 
-- RPM targets Rocky 9; other distributions, architectures and EC versions are untested.
+- RPM targets Rocky 9 and the deb track targets the Debian/Ubuntu family; the deb track has
+  seen far less use, and other distributions, architectures and EC versions are untested.
+- Cinnamon support covers screen-lock detection and OSD suppression only. It has no xfconf,
+  so `gf63-control-setup` registers autostart and skips bindings there; Fn-key remapping and
+  power-manager integration remain XFCE/KDE only. Adding them needs a `configure_cinnamon.py`
+  built on `org.cinnamon.desktop.keybindings`, mirroring `configure_kde.py`.
+- Korean input assumes IBus. Debian-family images may ship a different input method, and the
+  interaction with the Hangul/Caps Lock configuration is unverified there.
 - Full reboot verification and all physical Fn combinations remain unverified.
 - Fan RPM curves and GPU power limits are not exposed by the chosen driver.
 - A different power manager may replace the selected TuneD profile.

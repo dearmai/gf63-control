@@ -4,10 +4,10 @@ if [ "$(id -u)" = 0 ]; then
     echo '데스크톱에 로그인한 일반 사용자로 실행하세요. sudo를 붙이지 마세요.' >&2
     exit 1
 fi
-# GNOME setup only registers the application; XFCE bindings do not apply there.
+# GNOME and Cinnamon setup only register the application; they have no xfconf.
 if [ "$#" -eq 0 ]; then
     case ":${XDG_CURRENT_DESKTOP:-}:${XDG_SESSION_DESKTOP:-}:" in
-        *:GNOME:*|*:gnome:*) set -- --startup ;;
+        *:GNOME:*|*:gnome:*|*:X-Cinnamon:*|*:cinnamon:*) set -- --startup ;;
     esac
 fi
 if [ "$#" -eq 1 ] && [ "$1" = --startup ]; then

@@ -1,0 +1,12 @@
+Package: msi-ec-dkms
+Version: 0.13-1
+Section: kernel
+Priority: optional
+Architecture: all
+Maintainer: GF63 Control contributors <noreply@invalid>
+Depends: dkms, gcc, make, kmod
+Description: MSI embedded controller driver sources for DKMS
+ Pinned upstream msi-ec driver sources. Firmware compatibility is detected
+ by the driver. No firmware override or raw EC writes are configured.
+ Kernel headers for the running kernel are checked at configure time
+ because their package name depends on the running kernel.

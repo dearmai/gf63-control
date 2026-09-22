@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+if [ "$1" = remove ]; then
+    dkms remove -m msi_ec -v 0.13 --all || true
+fi
+exit 0

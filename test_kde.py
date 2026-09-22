@@ -22,6 +22,14 @@ class DesktopTests(unittest.TestCase):
         with patch.dict(os.environ, {'XDG_CURRENT_DESKTOP': 'GNOME', 'XDG_SESSION_DESKTOP': 'gnome'}):
             self.assertEqual(desktop_env.kind(), 'unsupported')
 
+    def test_cinnamon_uses_its_own_screensaver_and_keeps_shortcuts_unsupported(self):
+        with patch.dict(os.environ, {'XDG_CURRENT_DESKTOP': 'X-Cinnamon', 'XDG_SESSION_DESKTOP': 'cinnamon',
+                                     'XDG_SESSION_TYPE': 'x11', 'WAYLAND_DISPLAY': ''}):
+            self.assertEqual(desktop_env.kind(), 'cinnamon')
+            self.assertEqual(desktop_env.screensaver(),
+                             ('org.cinnamon.ScreenSaver', '/org/cinnamon/ScreenSaver', 'org.cinnamon.ScreenSaver'))
+            with self.assertRaises(RuntimeError): desktop_env.require_shortcuts()
+
     @patch.object(desktop_env, 'call', side_effect=RuntimeError('no locker'))
     def test_unknown_lock_state_blocks_input(self, call):
         self.assertTrue(desktop_env.locked())

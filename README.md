@@ -3,6 +3,7 @@
 재설치 RPM 묶음과 전원 모드 사용법은 [REUSE.md](REUSE.md)를 참고하세요.
 
 MSI Thin GF63 12VE / Rocky Linux 9 / XFCE·KDE Plasma용 GTK3 제어판과 OSD입니다.
+Debian·Ubuntu 계열(HamoniKR·Linux Mint·Ubuntu)에서는 deb 패키지로 설치할 수 있습니다.
 
 ## 설치
 
@@ -22,6 +23,23 @@ RPM을 빌드하고 기존 설치 스크립트로 앱·드라이버·번들 글�
 앱을 트레이 모드로 실행합니다. 트레이 아이콘에는 아래의 AppIndicator 확장이 필요합니다.
 글꼴만 설치하려면 `make install-fonts`, 빌드만 하려면 `make build`를 사용하세요.
 글꼴 설치는 기본 글꼴 설정을 변경하지 않습니다.
+
+### Debian·Ubuntu 계열
+
+HamoniKR·Linux Mint·Ubuntu 등에서는 deb 트랙을 사용합니다. 데스크톱에 로그인한
+일반 사용자 터미널에서 실행하세요.
+
+```sh
+sudo apt install make dpkg-dev python3
+make install-deb
+```
+
+deb를 빌드하고 apt로 앱·드라이버(DKMS)·번들 글꼴을 설치합니다. 빌드만 하려면 `make build-deb`,
+환경만 먼저 확인하려면 `make check-env-deb`를 사용하세요. 자세한 내용은
+[packaging/REUSE-debian.md](packaging/REUSE-debian.md)를 참고하세요.
+
+Cinnamon에서는 화면 잠금 감지와 OSD 억제까지 지원하며, Fn키 재매핑과 전원 관리자 연동은
+XFCE·KDE 전용입니다. `gf63-control-setup`은 GNOME과 마찬가지로 자동 실행만 등록합니다.
 
 ## 실행
 
@@ -162,15 +180,15 @@ rm ~/.config/autostart/gf63-control.desktop
 - `gf63_helper.py`: polkit으로 실행하는 제한된 하드웨어 제어
 - `configure_xfce.py`: 사용자 단축키 등록과 복원
 - `battery_limit.py`: 배터리 CLI
-- `packaging/`: RPM spec, 빌드 및 설치 스크립트
+- `packaging/`: RPM spec, deb 메타데이터(`deb/`), 빌드 및 설치 스크립트
 - `vendor/msi-ec/`: 고정된 upstream 드라이버 소스와 출처
 
 개발 지침과 검증 범위는 [AGENTS.md](AGENTS.md)를 확인하세요.
 
 ```sh
-sudo dnf install rpm-build python3
+sudo dnf install rpm-build python3      # Debian 계열: sudo apt install dpkg-dev python3
 python3 -m unittest -v
-python3 packaging/build.py
+python3 packaging/build.py              # Debian 계열: python3 packaging/build_deb.py
 ```
 
 빌드 결과는 `dist/`에 생성됩니다. 드라이버 소스가 포함되어 있어 빌드 중 GitHub에서 코드를 받지 않습니다.

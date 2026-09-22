@@ -1,6 +1,7 @@
 # GF63 Control 1.3.0 재설치 묶음
 
 대상: **Rocky Linux 9 x86_64 + XFCE 또는 KDE Plasma**, MSI Thin GF63 12VE.
+Debian·Ubuntu 계열은 [packaging/REUSE-debian.md](packaging/REUSE-debian.md)를 참고하세요.
 검증한 EC 펌웨어는 `16R8IMS1.108`입니다. 같은 GF63 이름이어도 다른 펌웨어는
 드라이버 지원 여부가 다를 수 있습니다. 드라이버가 자동 감지하며 강제 지정하지 않습니다.
 

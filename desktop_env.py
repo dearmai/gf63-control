@@ -7,6 +7,8 @@ def kind():
              os.environ.get('XDG_SESSION_DESKTOP', '')).lower().split(':')
     if any(name in ('kde', 'plasma', 'plasmawayland', 'plasmax11') for name in names):
         return 'kde'
+    if any(name in ('cinnamon', 'x-cinnamon') for name in names):
+        return 'cinnamon'
     if 'xfce' in names or not any(names):
         return 'xfce'
     return 'unsupported'
@@ -26,6 +28,8 @@ def require_shortcuts():
 def screensaver():
     if kind() == 'kde':
         return 'org.freedesktop.ScreenSaver', '/ScreenSaver', 'org.freedesktop.ScreenSaver'
+    if kind() == 'cinnamon':
+        return 'org.cinnamon.ScreenSaver', '/org/cinnamon/ScreenSaver', 'org.cinnamon.ScreenSaver'
     return 'org.xfce.ScreenSaver', '/org/xfce/ScreenSaver', 'org.xfce.ScreenSaver'
 
 
