@@ -17,6 +17,11 @@ import install_programs as programs
 
 
 class Control(Gtk.Application):
+    KEYBOARD_NOTE = ('한/영 또는 Caps Lock 키로 한국어와 영어를 전환합니다.\n'
+                     'Caps Lock의 대문자 고정 기능은 해제됩니다.\n'
+                     '기능키를 추가 선택한 뒤 적용하세요. 기존 앱 단축키와 겹칠 수 있습니다.\n'
+                     '{label}에서 한글 입력기를 선택한 상태에서 사용하세요.')
+
     def __init__(self):
         super().__init__(application_id='local.gf63.Control', flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -328,12 +333,10 @@ class Control(Gtk.Application):
             self.mac_buttons.append(button)
         settings.pack_start(mac_buttons, False, False, 0)
         self.add_section(settings, '한영 전환')
-        keyboard_note = Gtk.Label(label='한/영 또는 Caps Lock 키로 한국어와 영어를 전환합니다.\n'
-                                       'Caps Lock의 대문자 고정 기능은 해제됩니다.\n'
-                                       'F1~F20을 추가 선택한 뒤 적용하세요. 기존 앱 단축키와 겹칠 수 있습니다.\n'
-                                       'IBus에서 한글 입력기를 선택한 상태에서 사용하세요.', xalign=0)
-        keyboard_note.set_line_wrap(True)
-        settings.pack_start(keyboard_note, False, False, 0)
+        self.keyboard_note = Gtk.Label(label=self.KEYBOARD_NOTE.format(label='한글 입력기'),
+                                       xalign=0)
+        self.keyboard_note.set_line_wrap(True)
+        settings.pack_start(self.keyboard_note, False, False, 0)
         function_grid = Gtk.Grid(column_spacing=8, row_spacing=4)
         self.keyboard_function_keys = {}
         for index, key in enumerate(keyboard.FUNCTION_KEYS):
@@ -539,23 +542,27 @@ class Control(Gtk.Application):
                 keyboard.configure(function_keys=selected)
             elif operation == 'restore':
                 keyboard.configure(restore=True)
-            return keyboard.status(), keyboard.selected_function_keys()
+            return (keyboard.status(), keyboard.selected_function_keys(),
+                    keyboard.method_label(), list(keyboard.supported_function_keys()))
 
         future = self.pool.submit(work)
         future.add_done_callback(lambda result: GLib.idle_add(self.keyboard_finished, result))
 
     def keyboard_finished(self, future):
         self.keyboard_busy = False
-        for toggle in self.keyboard_function_keys.values():
-            toggle.set_sensitive(True)
         for button in self.keyboard_buttons:
             button.set_sensitive(True)
         try:
-            message, selected = future.result()
+            message, selected, label, supported = future.result()
             self.keyboard_status.set_text(message)
+            self.keyboard_note.set_text(self.KEYBOARD_NOTE.format(label=label))
             for key, toggle in self.keyboard_function_keys.items():
                 toggle.set_active(key in selected)
+                # nimf's key table stops at F12; do not offer keys it cannot register.
+                toggle.set_sensitive(key in supported)
         except Exception as exc:
+            for toggle in self.keyboard_function_keys.values():
+                toggle.set_sensitive(True)
             self.keyboard_status.set_text('한영 전환 설정 실패: ' + str(exc))
         return False
 

@@ -9,6 +9,7 @@ import time
 import urllib.parse
 import urllib.request
 
+import configure_keyboard as keyboard
 import install_fonts
 
 APP = 'org.winehq.Wine'
@@ -25,12 +26,26 @@ DESKTOP = """[Desktop Entry]
 Type=Application
 Name=카카오톡 (Wine)
 Comment=Wine으로 실행하는 Windows 카카오톡
-Exec=/usr/bin/flatpak run --branch=stable-25.08 --env=WINEPREFIX=/var/data/kakaotalk --env=WINEDLLOVERRIDES=winemenubuilder.exe=d --env=WINEDEBUG=-all --env=XMODIFIERS=@im=ibus --command=wine org.winehq.Wine "/var/data/kakaotalk/drive_c/Program Files/Kakao/KakaoTalk/KakaoTalk.exe"
+Exec=/usr/bin/flatpak run --branch=stable-25.08 --env=WINEPREFIX=/var/data/kakaotalk --env=WINEDLLOVERRIDES=winemenubuilder.exe=d --env=WINEDEBUG=-all --env=XMODIFIERS=@im={module} --command=wine org.winehq.Wine "/var/data/kakaotalk/drive_c/Program Files/Kakao/KakaoTalk/KakaoTalk.exe"
 Icon=gf63-control
 Terminal=false
 Categories=Network;InstantMessaging;
 StartupWMClass=kakaotalk.exe
 """
+
+
+def im_module():
+    """Wine reaches the Hangul input method over XIM, so name the running one."""
+    return keyboard.active_method() or keyboard.IBUS
+
+
+def desktop_file():
+    return DESKTOP.format(module=im_module())
+
+
+def owned_launchers():
+    # A launcher this app wrote for either input method is ours to rewrite.
+    return [DESKTOP.format(module=name) for name in keyboard.LABELS]
 
 
 def run(args, timeout=30):
@@ -47,7 +62,7 @@ def run(args, timeout=30):
 def wine(*args):
     return ['flatpak', 'run', '--branch=' + BRANCH, '--env=WINEPREFIX=/var/data/kakaotalk',
             '--env=WINEDLLOVERRIDES=winemenubuilder.exe=d', '--env=WINEDEBUG=-all',
-            '--env=XMODIFIERS=@im=ibus', '--command=wine', APP, *args]
+            '--env=XMODIFIERS=@im=' + im_module(), '--command=wine', APP, *args]
 
 
 def runtime_installed():
@@ -65,7 +80,7 @@ def status():
         return '미설치 · Wine 실행 환경과 카카오톡을 설치할 수 있습니다.'
     if not EXE.is_file():
         return 'Wine 준비됨 · 카카오톡 설치가 필요합니다.'
-    if not LAUNCHER.is_file() or LAUNCHER.read_text() != DESKTOP:
+    if not LAUNCHER.is_file() or LAUNCHER.read_text() != desktop_file():
         return '카카오톡 설치됨 · 설치 / 설정 복구로 실행 메뉴를 등록하세요.'
     return '설치됨 · 앱 메뉴에서 ‘카카오톡 (Wine)’을 실행할 수 있습니다.'
 
@@ -178,7 +193,7 @@ def install(progress=lambda message: None):
         except BlockingIOError:
             raise RuntimeError('다른 카카오톡 설치가 진행 중입니다.')
         # Do not overwrite a launcher that somebody customized.
-        if LAUNCHER.exists() and LAUNCHER.read_text() != DESKTOP:
+        if LAUNCHER.exists() and LAUNCHER.read_text() not in owned_launchers():
             raise RuntimeError('기존 Wine 바로가기가 변경되어 있습니다: ' + str(LAUNCHER))
         if not runtime_installed():
             progress('Wine 실행 환경 설치 중… 처음 설치할 때는 수 분 걸릴 수 있습니다.')
@@ -201,7 +216,7 @@ def install(progress=lambda message: None):
         configure_rendering()
         APPLICATIONS.mkdir(parents=True, exist_ok=True)
         temporary = LAUNCHER.with_suffix('.tmp')
-        temporary.write_text(DESKTOP)
+        temporary.write_text(desktop_file())
         temporary.replace(LAUNCHER)
         if shutil.which('update-desktop-database'):
             run(['update-desktop-database', str(APPLICATIONS)])

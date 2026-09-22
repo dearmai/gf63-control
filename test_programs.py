@@ -27,6 +27,8 @@ class ProgramTests(unittest.TestCase):
         p.start(); self.addCleanup(p.stop)
         p = patch.object(programs.install_fonts, 'contents', return_value={'pretendard/Pretendard-Regular.otf': b'font'})
         p.start(); self.addCleanup(p.stop)
+        p = patch.object(programs.keyboard, 'active_method', return_value=programs.keyboard.NIMF)
+        self.active_method = p.start(); self.addCleanup(p.stop)
 
     def mock(self, name, *args, **kwargs):
         p = patch.object(programs, name, *args, **kwargs)
@@ -46,11 +48,37 @@ class ProgramTests(unittest.TestCase):
         unrelated.parent.mkdir(parents=True)
         unrelated.write_text('existing WinApps launcher')
         self.assertIn('설치됨', programs.install())
-        self.assertEqual(programs.LAUNCHER.read_text(), programs.DESKTOP)
+        self.assertEqual(programs.LAUNCHER.read_text(), programs.desktop_file())
+        self.assertIn('@im=nimf', programs.LAUNCHER.read_text())
         self.assertEqual(unrelated.read_text(), 'existing WinApps launcher')
         download.assert_not_called()
         rendering.assert_called_once()
         self.assertFalse(any('/S' in c.args[0] for c in programs.run.call_args_list))
+
+    def test_launcher_is_rewritten_when_the_input_method_changes(self):
+        self.installed()
+        self.mock('configure_rendering')
+        self.mock('configure_text_fonts')
+        self.mock('download')
+        programs.install()
+        self.assertIn('@im=nimf', programs.LAUNCHER.read_text())
+        self.active_method.return_value = programs.keyboard.IBUS
+        self.assertIn('실행 메뉴를 등록', programs.status())
+        programs.install()
+        self.assertIn('@im=ibus', programs.LAUNCHER.read_text())
+        self.assertIn('설치됨 ·', programs.status())
+
+    def test_undetected_input_method_falls_back_to_ibus(self):
+        self.active_method.return_value = None
+        self.assertEqual(programs.im_module(), programs.keyboard.IBUS)
+        self.assertIn('--env=XMODIFIERS=@im=ibus', programs.wine('x.exe'))
+
+    def test_a_customized_launcher_is_still_preserved(self):
+        self.installed()
+        programs.LAUNCHER.parent.mkdir(parents=True)
+        programs.LAUNCHER.write_text(programs.desktop_file() + 'Hidden=true\n')
+        with self.assertRaisesRegex(RuntimeError, '변경'):
+            programs.install()
 
     def test_custom_launcher_is_preserved_before_mutation(self):
         programs.LAUNCHER.parent.mkdir(parents=True)

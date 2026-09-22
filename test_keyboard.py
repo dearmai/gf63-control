@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -7,7 +8,11 @@ from unittest.mock import patch
 import configure_keyboard as keyboard
 
 
-class KeyboardTests(unittest.TestCase):
+class FakeSession:
+    """X11 keymap and GSettings doubles shared by the per-input-method tests."""
+
+    method = None
+
     def setUp(self):
         patcher = patch.object(keyboard.desktop_env, 'x11', return_value=True)
         patcher.start()
@@ -25,6 +30,7 @@ class KeyboardTests(unittest.TestCase):
         self.maps = {'66': ['Caps_Lock', 'NoSymbol', 'Caps_Lock']}
         self.locks = ['Caps_Lock']
         self.switch = "'Shift+space'"
+        self.nimf = {'shortcuts-to-lang': "['Hangul']", 'shortcuts-to-sys': "['Hangul']"}
         self.commands = []
         patcher = patch.object(keyboard, 'clear_caps_lock')
         self.clear_caps = patcher.start()
@@ -49,12 +55,20 @@ class KeyboardTests(unittest.TestCase):
                 elif line.startswith('add Lock = '):
                     self.locks = line.split(' = ')[1].split()
             return ''
+        if args == ('gsettings', 'list-schemas'):
+            return keyboard.SCHEMAS[self.method]
         if args[:2] == ('gsettings', 'get'):
-            return self.switch
+            return self.nimf[args[3]] if args[2] == keyboard.SCHEMAS[keyboard.NIMF] else self.switch
         if args[:2] == ('gsettings', 'set'):
-            self.switch = args[-1]
+            if args[2] == keyboard.SCHEMAS[keyboard.NIMF]:
+                self.nimf[args[3]] = args[-1]
+            else:
+                self.switch = args[-1]
             return ''
         self.fail(str(args))
+
+class KeyboardTests(FakeSession, unittest.TestCase):
+    method = keyboard.IBUS
 
     def test_setup_repeat_login_restore(self):
         keyboard.configure()
@@ -305,3 +319,114 @@ class KeyboardTests(unittest.TestCase):
         with patch.object(keyboard.fcntl, 'flock', side_effect=BlockingIOError):
             keyboard.watch_login()
         self.assertEqual(self.commands, [])
+
+
+class NimfTests(FakeSession, unittest.TestCase):
+    """nimf stores the switch keys as two GSettings string arrays, not one string."""
+
+    method = keyboard.NIMF
+
+    def shortcuts(self):
+        return [json.loads(self.nimf[key].replace("'", '"')) for key in keyboard.NIMF_SHORTCUTS]
+
+    def test_setup_adds_toggle_to_both_shortcut_lists_and_restores(self):
+        self.nimf['shortcuts-to-sys'] = "['Hangul', 'Escape']"
+        keyboard.configure(function_keys=['F9'])
+        self.assertEqual(self.maps['66'], ['Hangul', 'NoSymbol', 'Hangul'])
+        self.assertEqual(self.shortcuts(), [['Hangul', 'F9'], ['Hangul', 'Escape', 'F9']])
+        self.assertIn('nimf', keyboard.status())
+        self.assertIn('F9', keyboard.status())
+        keyboard.configure(function_keys=[])
+        self.assertEqual(self.shortcuts(), [['Hangul'], ['Hangul', 'Escape']])
+        keyboard.configure(restore=True)
+        self.assertEqual(self.shortcuts(), [['Hangul'], ['Hangul', 'Escape']])
+        self.assertEqual(self.maps['66'], ['Caps_Lock', 'NoSymbol', 'Caps_Lock'])
+
+    def test_login_reapplies_reset_shortcuts(self):
+        keyboard.configure(function_keys=['F9'])
+        self.nimf = {'shortcuts-to-lang': "['Hangul']", 'shortcuts-to-sys': "['Hangul']"}
+        keyboard.configure(login=True)
+        self.assertEqual(self.shortcuts(), [['Hangul', 'F9'], ['Hangul', 'F9']])
+        self.nimf['shortcuts-to-lang'] = "['F12']"
+        keyboard.configure(login=True)
+        self.assertEqual(self.nimf['shortcuts-to-lang'], "['F12']")
+
+    def test_empty_shortcut_list_round_trips(self):
+        self.nimf['shortcuts-to-lang'] = '@as []'
+        keyboard.configure()
+        self.assertEqual(self.shortcuts(), [['Hangul'], ['Hangul']])
+        keyboard.configure(restore=True)
+        self.assertEqual(self.nimf['shortcuts-to-lang'], '@as []')
+
+    def test_function_keys_above_f12_are_rejected_without_mutation(self):
+        keyboard.configure(function_keys=['F12'])
+        original = keyboard.BACKUP.read_text()
+        self.commands.clear()
+        with self.assertRaisesRegex(ValueError, 'F12'):
+            keyboard.configure(function_keys=['F13'])
+        self.assertEqual(self.commands, [])
+        self.assertEqual(keyboard.BACKUP.read_text(), original)
+
+    def test_status_detects_a_toggle_broken_on_one_side_only(self):
+        keyboard.configure()
+        self.nimf['shortcuts-to-sys'] = '@as []'
+        self.assertIn('설정 확인 필요', keyboard.status())
+
+
+class MethodDetectionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        patcher = patch.object(keyboard, 'BACKUP', Path(self.temp.name) / 'backup.json')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.schemas = set(keyboard.SCHEMAS.values())
+        self.running = set()
+        patcher = patch.object(keyboard, 'installed_schemas', lambda: self.schemas)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = patch.object(keyboard, 'running_processes', lambda: self.running)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_single_installed_method_wins(self):
+        for method in (keyboard.NIMF, keyboard.IBUS):
+            with self.subTest(method=method):
+                self.schemas = {keyboard.SCHEMAS[method]}
+                self.assertEqual(keyboard.detect_method(), method)
+
+    def test_running_process_breaks_the_tie_before_the_environment(self):
+        self.running = {'nimf', 'systemd'}
+        with patch.dict(os.environ, {'GTK_IM_MODULE': 'ibus', 'QT_IM_MODULE': '', 'XMODIFIERS': ''}):
+            self.assertEqual(keyboard.detect_method(), keyboard.NIMF)
+
+    def test_daemon_name_with_a_suffix_still_matches(self):
+        self.running = {'ibus-daemon', 'ibus-x11'}
+        with patch.dict(os.environ, {'GTK_IM_MODULE': '', 'QT_IM_MODULE': '', 'XMODIFIERS': ''}):
+            self.assertEqual(keyboard.detect_method(), keyboard.IBUS)
+
+    def test_environment_breaks_the_tie_when_nothing_runs(self):
+        with patch.dict(os.environ, {'GTK_IM_MODULE': 'ibus', 'QT_IM_MODULE': '', 'XMODIFIERS': ''}):
+            self.assertEqual(keyboard.detect_method(), keyboard.IBUS)
+
+    def test_ambiguous_and_missing_methods_raise(self):
+        with patch.dict(os.environ, {'GTK_IM_MODULE': '', 'QT_IM_MODULE': '', 'XMODIFIERS': ''}):
+            with self.assertRaises(RuntimeError):
+                keyboard.detect_method()
+            self.schemas = set()
+            with self.assertRaises(RuntimeError):
+                keyboard.detect_method()
+            self.assertIsNone(keyboard.active_method())
+            self.assertEqual(keyboard.supported_function_keys(), keyboard.FUNCTION_KEYS)
+
+    def test_backup_without_a_method_keeps_using_ibus(self):
+        keyboard.BACKUP.write_text(json.dumps({'old_switch': "'Shift+space'"}))
+        self.assertEqual(keyboard.active_method(), keyboard.IBUS)
+        self.assertEqual(keyboard.method_label(), 'IBus')
+        self.assertEqual(keyboard.supported_function_keys(), keyboard.FUNCTION_KEYS)
+
+    def test_configured_method_is_reported_without_detection(self):
+        keyboard.BACKUP.write_text(json.dumps({'input_method': keyboard.NIMF}))
+        self.schemas = set()
+        self.assertEqual(keyboard.method_label(), 'nimf')
+        self.assertEqual(keyboard.supported_function_keys(), keyboard.FUNCTION_KEYS[:12])

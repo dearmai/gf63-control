@@ -77,6 +77,9 @@ python3 packaging/build_deb.py
 - RPM(Rocky 9) 트랙보다 검증이 적습니다.
 - Cinnamon에서는 화면 잠금 감지와 OSD 억제까지만 지원합니다.
   Fn키 재매핑·전원 관리자 연동은 XFCE·KDE 전용입니다.
-- `tuned`·`ibus-hangul` 등 배포판마다 이름이 다를 수 있는 패키지는 `Recommends`로 두었습니다.
-  없으면 설치는 성공하지만 해당 기능은 비활성으로 표시됩니다.
-- 배포판 기본 한글 입력기가 ibus가 아닌 경우 한영 전환 설정과 충돌할 수 있습니다 (미검증).
+- `tuned`·`nimf-libhangul | ibus-hangul` 등 배포판마다 이름이 다를 수 있는 패키지는
+  `Recommends`로 두었습니다. 없으면 설치는 성공하지만 해당 기능은 비활성으로 표시됩니다.
+- 한영 전환은 nimf와 IBus를 모두 지원하며 실행 중인 입력기를 판별해 그쪽 GSettings만 바꿉니다.
+  HamoniKR 8 기본값인 nimf에서 설정 읽기·쓰기·복원을 확인했고, 물리 키 입력은 미검증입니다.
+  nimf는 키 표가 F12까지여서 F13~F20 기능키 전환은 IBus 세션에서만 제공합니다.
+- Fcitx 등 그 밖의 입력기는 감지하지 않으며 설정도 바꾸지 않습니다 (미검증).

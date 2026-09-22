@@ -79,7 +79,7 @@ the staged tree so the build user's umask cannot leak into the package.
 Debian dependency names are mapped, not copied: `python3-gobject`/`gtk3` become
 `python3-gi`/`gir1.2-gtk-3.0`, `polkit` becomes `polkitd | policykit-1` plus `pkexec`,
 `kernel-devel` has no fixed name so the DKMS postinst checks `/lib/modules/$(uname -r)/build`.
-Packages whose names drift across derivatives (`tuned`, `ibus-hangul`, audio firmware,
+Packages whose names drift across derivatives (`tuned`, `nimf-libhangul | ibus-hangul`, audio firmware,
 appindicator, the XFCE set) are `Recommends`, not `Depends`, so one missing name on a
 derivative cannot abort the whole transaction; the app must keep reporting those controls
 as unavailable rather than failing.
@@ -116,8 +116,11 @@ contents before a public release.
   so `gf63-control-setup` registers autostart and skips bindings there; Fn-key remapping and
   power-manager integration remain XFCE/KDE only. Adding them needs a `configure_cinnamon.py`
   built on `org.cinnamon.desktop.keybindings`, mirroring `configure_kde.py`.
-- Korean input assumes IBus. Debian-family images may ship a different input method, and the
-  interaction with the Hangul/Caps Lock configuration is unverified there.
+- Korean input supports IBus (`org.freedesktop.ibus.engine.hangul` `switch-keys`) and nimf
+  (`org.nimf.engines.nimf-libhangul` `shortcuts-to-lang`/`shortcuts-to-sys`), detected per
+  session and recorded in the backup. nimf's key table stops at F12, so F13-F20 switching is
+  IBus only. Other input methods (Fcitx) are not detected and are left untouched. Physical
+  key presses on nimf are unverified; only settings read/write/restore were checked.
 - Full reboot verification and all physical Fn combinations remain unverified.
 - Fan RPM curves and GPU power limits are not exposed by the chosen driver.
 - A different power manager may replace the selected TuneD profile.

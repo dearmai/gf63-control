@@ -1,4 +1,8 @@
-"""Per-user IBus Hangul / X11 Caps Lock setup with ownership-aware restore."""
+"""Per-user Hangul input method / X11 Caps Lock setup with ownership-aware restore.
+
+Supports the two Korean input methods shipped by the targeted distributions:
+IBus (Rocky 9) and nimf (HamoniKR and other Debian-family images).
+"""
 import ast
 import ctypes
 import fcntl
@@ -13,8 +17,16 @@ import desktop_env
 CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
 BACKUP = CONFIG / 'gf63-control/keyboard-backup.json'
 AUTOSTART = CONFIG / 'autostart/gf63-control-keyboard.desktop'
-SCHEMA = 'org.freedesktop.ibus.engine.hangul'
+IBUS = 'ibus'
+NIMF = 'nimf'
+SCHEMAS = {IBUS: 'org.freedesktop.ibus.engine.hangul',
+           NIMF: 'org.nimf.engines.nimf-libhangul'}
+LABELS = {IBUS: 'IBus', NIMF: 'nimf'}
+# nimf switches to Korean and back through two separate shortcut lists.
+NIMF_SHORTCUTS = ('shortcuts-to-lang', 'shortcuts-to-sys')
 FUNCTION_KEYS = tuple('F' + str(number) for number in range(1, 21))
+# nimf's key table stops at F12; IBus accepts every X11 function keysym.
+METHOD_FUNCTION_KEYS = {IBUS: FUNCTION_KEYS, NIMF: FUNCTION_KEYS[:12]}
 DESKTOP = '''[Desktop Entry]
 Type=Application
 Name=GF63 Control Korean Keyboard
@@ -103,6 +115,115 @@ def apply_mapping(state, restore=False, quiet=False):
         raise RuntimeError('Caps Lock 키 설정을 적용하지 못했습니다.')
 
 
+def installed_schemas():
+    return set(run('gsettings', 'list-schemas').splitlines())
+
+
+def running_processes():
+    """Read /proc directly; the watcher must not fork a tool for this."""
+    names = set()
+    try:
+        entries = list(Path('/proc').iterdir())
+    except OSError:
+        return names
+    for entry in entries:
+        if entry.name.isdigit():
+            try:
+                names.add((entry / 'comm').read_text().strip())
+            except OSError:
+                continue
+    return names
+
+
+def detect_method():
+    """Pick the Hangul input method actually in use, never both at once."""
+    schemas = installed_schemas()
+    available = [name for name in (NIMF, IBUS) if SCHEMAS[name] in schemas]
+    if not available:
+        raise RuntimeError('한글 입력기 설정을 찾을 수 없습니다. nimf 또는 IBus 한글 입력기를 설치하세요.')
+    if len(available) == 1:
+        return available[0]
+    running = running_processes()
+    modules = (os.environ.get('GTK_IM_MODULE', '') + ':' +
+               os.environ.get('QT_IM_MODULE', '') + ':' +
+               os.environ.get('XMODIFIERS', '')).lower()
+    for name in available:
+        # The daemons are named after the method: nimf, ibus-daemon, ibus-x11.
+        if any(comm.split('-')[0] == name for comm in running):
+            return name
+    for name in available:
+        if name in modules:
+            return name
+    raise RuntimeError('한글 입력기가 nimf와 IBus 중 무엇인지 확인할 수 없습니다. 사용할 입력기를 실행한 뒤 다시 시도하세요.')
+
+
+def method_of(state):
+    # Backups written before nimf support was added always described IBus.
+    return state.get('input_method', IBUS) if state else detect_method()
+
+
+def active_method():
+    """Configured or detected method for the UI; None when unavailable."""
+    try:
+        return method_of(json.loads(BACKUP.read_text()) if BACKUP.exists() else None)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return None
+
+
+def method_label():
+    return LABELS.get(active_method(), '한글 입력기')
+
+
+def supported_function_keys():
+    return METHOD_FUNCTION_KEYS.get(active_method(), FUNCTION_KEYS)
+
+
+def string_list(text):
+    text = text.strip()
+    if text.startswith('@as '):  # gsettings prints an empty array as "@as []".
+        text = text[4:].strip()
+    return [str(item) for item in ast.literal_eval(text)]
+
+
+def variant(keys):
+    return '@as []' if not keys else '[' + ', '.join(repr(key) for key in keys) + ']'
+
+
+def read_switch(method):
+    """Return the switch-key setting as one opaque, canonical string."""
+    if method == NIMF:
+        return json.dumps([string_list(run('gsettings', 'get', SCHEMAS[NIMF], key))
+                           for key in NIMF_SHORTCUTS])
+    return run('gsettings', 'get', SCHEMAS[IBUS], 'switch-keys')
+
+
+def write_switch(method, value):
+    if method == NIMF:
+        for key, keys in zip(NIMF_SHORTCUTS, json.loads(value)):
+            run('gsettings', 'set', SCHEMAS[NIMF], key, variant(keys))
+        return
+    run('gsettings', 'set', SCHEMAS[IBUS], 'switch-keys', value)
+
+
+def switch_keys(method, value):
+    """Keys that toggle Korean input, for status and ownership checks."""
+    if method == NIMF:
+        to_lang, to_sys = json.loads(value)
+        return [key for key in to_lang if key in to_sys]
+    return [key for key in ast.literal_eval(value).split(',') if key]
+
+
+def extend_switch(method, value, keys):
+    if method == NIMF:
+        lists = [list(group) for group in json.loads(value)]
+        for group in lists:
+            group.extend(key for key in keys if key not in group)
+        return json.dumps(lists)
+    switches = switch_keys(IBUS, value)
+    switches.extend(key for key in keys if key not in switches)
+    return repr(','.join(switches))
+
+
 def selected_function_keys():
     if not BACKUP.exists():
         return []
@@ -141,9 +262,10 @@ def _configure(restore=False, login=False, function_keys=None):
     if restore:
         if state is None:
             return
+        method = method_of(state)
         apply_mapping(state, restore=True)
-        if run('gsettings', 'get', SCHEMA, 'switch-keys') == state['installed_switch']:
-            run('gsettings', 'set', SCHEMA, 'switch-keys', state['old_switch'])
+        if read_switch(method) == state['installed_switch']:
+            write_switch(method, state['old_switch'])
         if AUTOSTART.exists() and AUTOSTART.read_text() in OWNED_DESKTOPS:
             if state['old_autostart'] is None:
                 AUTOSTART.unlink()
@@ -153,16 +275,21 @@ def _configure(restore=False, login=False, function_keys=None):
         return
     if login:
         if state is not None:
-            current_switch = run('gsettings', 'get', SCHEMA, 'switch-keys')
+            method = method_of(state)
+            current_switch = read_switch(method)
             if current_switch == state['old_switch'] and current_switch != state['installed_switch']:
-                run('gsettings', 'set', SCHEMA, 'switch-keys', state['installed_switch'])
+                write_switch(method, state['installed_switch'])
             apply_mapping(state, quiet=True)
         return
+    method = method_of(state)
+    if function_keys and any(key not in METHOD_FUNCTION_KEYS[method] for key in function_keys):
+        raise ValueError(LABELS[method] + ' 한글 입력기는 ' +
+                         METHOD_FUNCTION_KEYS[method][-1] + '까지만 한영 전환 키로 등록할 수 있습니다.')
     current_autostart = AUTOSTART.read_text() if AUTOSTART.exists() else None
     if (state is not None and current_autostart is not None
             and current_autostart not in (*OWNED_DESKTOPS, state['old_autostart'])):
         raise RuntimeError('기존 자동 시작 파일과 충돌합니다: ' + str(AUTOSTART))
-    old_switch = run('gsettings', 'get', SCHEMA, 'switch-keys')
+    old_switch = read_switch(method)
     if state is None:
         maps = keymap()
         codes = [code for code, symbols in maps.items() if 'Caps_Lock' in symbols]
@@ -170,34 +297,29 @@ def _configure(restore=False, login=False, function_keys=None):
             raise RuntimeError('Caps Lock 키를 하나로 식별할 수 없습니다. 기존 키 재매핑을 확인하세요.')
         code = codes[0]
         locks = lock_keys()
-        switches = ast.literal_eval(old_switch).split(',')
-        if 'Hangul' not in switches:
-            switches.append('Hangul')
         state = dict(code=code, old_map=maps[code],
                      installed_map=['Hangul', 'NoSymbol', 'Hangul'],
                      old_locks=locks, installed_locks=[key for key in locks if key != 'Caps_Lock'],
-                     old_switch=old_switch, installed_switch=repr(','.join(filter(None, switches))),
+                     input_method=method, old_switch=old_switch,
+                     installed_switch=extend_switch(method, old_switch, ['Hangul']),
                      old_autostart=AUTOSTART.read_text() if AUTOSTART.exists() else None)
         save(state)  # Persist originals before any desktop mutation.
     if function_keys is not None and old_switch not in (state['old_switch'], state['installed_switch']):
         raise RuntimeError('입력기 전환 키가 외부에서 변경되었습니다. 원래 키 설정 복원 후 다시 적용하세요.')
     if function_keys is not None and function_keys != state.get('function_keys', []):
-        switches = ast.literal_eval(state['old_switch']).split(',')
-        for key in ['Hangul'] + function_keys:
-            if key not in switches:
-                switches.append(key)
         state['function_keys'] = function_keys
-        state['installed_switch'] = repr(','.join(filter(None, switches)))
+        state['installed_switch'] = extend_switch(method, state['old_switch'],
+                                                  ['Hangul'] + function_keys)
         save(state)
     if old_switch in (state['old_switch'], state['installed_switch']) or function_keys is not None:
-        run('gsettings', 'set', SCHEMA, 'switch-keys', state['installed_switch'])
+        write_switch(method, state['installed_switch'])
     apply_mapping(state)
     AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
     if not AUTOSTART.exists() or AUTOSTART.read_text() in (state['old_autostart'], *OWNED_DESKTOPS):
         AUTOSTART.write_text(DESKTOP)
     else:
         raise RuntimeError('기존 자동 시작 파일과 충돌합니다: ' + str(AUTOSTART))
-    print('한/영 및 Caps Lock 한영 전환 설정 완료 (IBus 한글 입력기).')
+    print('한/영 및 Caps Lock 한영 전환 설정 완료 (' + LABELS[method] + ' 한글 입력기).')
 
 
 def watch_login():
@@ -236,14 +358,15 @@ def status():
     if not BACKUP.exists():
         return '미설정 · 한/영 + Caps Lock 적용 버튼으로 설정하세요.'
     state = json.loads(BACKUP.read_text())
-    switches = ast.literal_eval(run('gsettings', 'get', SCHEMA, 'switch-keys')).split(',')
+    method = method_of(state)
+    switches = switch_keys(method, read_switch(method))
     active = (keymap().get(state['code']) == state['installed_map']
               and lock_keys() == state['installed_locks'] and 'Hangul' in switches
               and all(key in switches for key in state.get('function_keys', [])))
     persistent = AUTOSTART.exists() and AUTOSTART.read_text() == DESKTOP
     if not active:
         return '설정 확인 필요 · 현재 키 매핑 또는 입력기 설정이 변경되었습니다.'
-    label = '한/영 + Caps Lock'
+    label = LABELS[method] + ' · 한/영 + Caps Lock'
     if state.get('function_keys'):
         label += ' + ' + ', '.join(state['function_keys'])
     if not persistent:
