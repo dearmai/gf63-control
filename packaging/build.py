@@ -8,7 +8,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
-NAME = 'gf63-control-1.3.0'
+NAME = 'gf63-control-1.4.0'
 BUILD = ROOT / '.build' / NAME / 'rpmbuild'
 
 

@@ -8,8 +8,8 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
-NAME = 'gf63-control-1.3.0'
-VERSION = '1.3.0-1'
+NAME = 'gf63-control-1.4.0'
+VERSION = '1.4.0-1'
 DRIVER_VERSION = '0.13'
 BUILD = ROOT / '.build' / NAME / 'deb'
 

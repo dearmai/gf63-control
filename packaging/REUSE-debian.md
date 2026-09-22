@@ -1,20 +1,20 @@
-# GF63 Control 1.3.0 재설치 묶음 (Debian·Ubuntu 계열)
+# GF63 Control 1.4.0 재설치 묶음 (Debian·Ubuntu 계열)
 
 대상: **Debian·Ubuntu 계열 x86_64** (HamoniKR·Linux Mint·Ubuntu 등), MSI Thin GF63 12VE.
 검증한 EC 펌웨어는 `16R8IMS1.108`입니다. 같은 GF63 이름이어도 다른 펌웨어는
 드라이버 지원 여부가 다를 수 있습니다. 드라이버가 자동 감지하며 강제 지정하지 않습니다.
 
-Rocky Linux 9에서는 이 묶음이 아니라 RPM 묶음(`gf63-control-1.3.0-rocky9-x86_64.tar.gz`)을 사용하세요.
+Rocky Linux 9에서는 이 묶음이 아니라 RPM 묶음(`gf63-control-1.4.0-rocky9-x86_64.tar.gz`)을 사용하세요.
 기능 설명·전원 모드·한영 전환·Mac 단축키 등 사용법은 설치 후
 `/usr/share/doc/gf63-control/REUSE.md`와 `README.md`에 함께 설치됩니다.
 
 ## 보관할 파일
 
-`gf63-control-1.3.0-debian-x86_64.tar.gz` 전체를 보관하세요.
+`gf63-control-1.4.0-debian-x86_64.tar.gz` 전체를 보관하세요.
 
-- `debs/gf63-control_1.3.0-1_all.deb`: GUI, OSD, 배터리 CLI, 권한 정책, 사용자 설정 도구
+- `debs/gf63-control_1.4.0-1_all.deb`: GUI, OSD, 배터리 CLI, 권한 정책, 사용자 설정 도구
 - `debs/msi-ec-dkms_0.13-1_all.deb`: 고정된 MSI 드라이버 소스와 DKMS 등록
-- `sources/gf63-control-1.3.0.tar.gz`: 전체 소스 (향후 수정·재빌드용)
+- `sources/gf63-control-1.4.0.tar.gz`: 전체 소스 (향후 수정·재빌드용)
 - `install.sh`: 의존 패키지·커널 헤더·사용자 설정 설치
 - `SHA256SUMS`: 파일 손상 검증
 
@@ -26,8 +26,8 @@ Rocky Linux 9에서는 이 묶음이 아니라 RPM 묶음(`gf63-control-1.3.0-ro
 데스크톱에 로그인한 뒤 압축을 풀고 **일반 사용자 터미널**에서 실행합니다.
 
 ```sh
-tar -xzf gf63-control-1.3.0-debian-x86_64.tar.gz
-cd gf63-control-1.3.0-debian-x86_64
+tar -xzf gf63-control-1.4.0-debian-x86_64.tar.gz
+cd gf63-control-1.4.0-debian-x86_64
 ./install.sh
 ```
 

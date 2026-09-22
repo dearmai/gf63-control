@@ -1,4 +1,4 @@
-# GF63 Control 1.3.0 재설치 묶음
+# GF63 Control 1.4.0 재설치 묶음
 
 대상: **Rocky Linux 9 x86_64 + XFCE 또는 KDE Plasma**, MSI Thin GF63 12VE.
 Debian·Ubuntu 계열은 [packaging/REUSE-debian.md](packaging/REUSE-debian.md)를 참고하세요.
@@ -7,9 +7,9 @@ Debian·Ubuntu 계열은 [packaging/REUSE-debian.md](packaging/REUSE-debian.md)�
 
 ## 보관할 파일
 
-`gf63-control-1.3.0-rocky9-x86_64.tar.gz` 전체를 보관하세요.
+`gf63-control-1.4.0-rocky9-x86_64.tar.gz` 전체를 보관하세요.
 
-- `rpms/gf63-control-1.3.0-1.el9.noarch.rpm`: GUI, OSD, 배터리 CLI, 권한 정책, 사용자 설정 도구
+- `rpms/gf63-control-1.4.0-1.el9.noarch.rpm`: GUI, OSD, 배터리 CLI, 권한 정책, 사용자 설정 도구
 - `rpms/msi-ec-dkms-0.13-1.el9.noarch.rpm`: 고정된 MSI 드라이버 소스와 DKMS 등록
 - `sources/`: 전체 소스 압축과 SRPM (향후 수정·재빌드용)
 - `install.sh`: 저장소·의존 패키지·커널 개발 파일·사용자 설정 설치
@@ -24,8 +24,8 @@ Debian·Ubuntu 계열은 [packaging/REUSE-debian.md](packaging/REUSE-debian.md)�
 압축을 풀고 **일반 사용자 터미널**에서 실행합니다.
 
 ```sh
-tar -xzf gf63-control-1.3.0-rocky9-x86_64.tar.gz
-cd gf63-control-1.3.0-rocky9-x86_64
+tar -xzf gf63-control-1.4.0-rocky9-x86_64.tar.gz
+cd gf63-control-1.4.0-rocky9-x86_64
 ./install.sh
 ```
 

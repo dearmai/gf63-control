@@ -1,5 +1,5 @@
 Name:           gf63-control
-Version:        1.3.0
+Version:        1.4.0
 Release:        1%{?dist}
 Summary:        MSI GF63 GTK control panel, function keys and OSD
 License:        MIT AND OFL-1.1
@@ -32,7 +32,7 @@ Pinned upstream msi-ec driver sources. Firmware compatibility is detected
 by the driver. No firmware override or raw EC writes are configured.
 
 %prep
-%setup -q -n gf63-control-1.3.0
+%setup -q -n gf63-control-1.4.0
 
 %build
 
@@ -104,6 +104,11 @@ fi
 /usr/lib/modules-load.d/gf63-msi-ec.conf
 
 %changelog
+* Tue Sep 22 2026 GF63 Control contributors - 1.4.0-1
+- Support nimf alongside IBus for Korean switching.
+- Add NVIDIA driver status and guided install to the program tab.
+- Add the Cinnamon screenshot shortcut control.
+
 * Wed Sep 09 2026 GF63 Control contributors - 1.3.0-1
 - Add KDE Plasma X11 shortcuts, screen-lock integration and PowerDevil lid handling.
 

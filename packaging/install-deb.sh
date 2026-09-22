@@ -22,7 +22,10 @@ if [[ -z ${DISPLAY:-} || -z ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
 fi
 (cd "$bundle_dir" && sha256sum --check SHA256SUMS)
 sudo apt-get update
-sudo apt-get install -y "linux-headers-$(uname -r)" "$bundle_dir"/debs/*.deb
+sudo apt-get install -y "linux-headers-$(uname -r)"
+# --reinstall so rebuilding the same version still replaces the installed files;
+# without it apt reports "already the newest version" and silently changes nothing.
+sudo apt-get install -y --reinstall --allow-downgrades "$bundle_dir"/debs/*.deb
 # The package postinst already builds the module; only retry if that did not take.
 if ! dkms status -m msi_ec -v 0.13 -k "$(uname -r)" | grep -q installed; then
     sudo dkms install -m msi_ec -v 0.13 -k "$(uname -r)"

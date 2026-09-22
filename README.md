@@ -7,7 +7,7 @@ Debian·Ubuntu 계열(HamoniKR·Linux Mint·Ubuntu)에서는 deb 패키지로 �
 
 ## 설치
 
-GitHub Releases에서 `gf63-control-1.3.0-rocky9-x86_64.tar.gz`를 내려받아 압축을 푼 뒤,
+GitHub Releases에서 `gf63-control-1.4.0-rocky9-x86_64.tar.gz`를 내려받아 압축을 푼 뒤,
 Rocky Linux 9 + XFCE에 로그인한 일반 사용자 터미널에서 `./install.sh`를 실행합니다.
 의존 패키지를 다운로드하므로 인터넷 연결이 필요합니다. 자세한 내용은 [재설치 안내](REUSE.md)를 참고하세요.
 
