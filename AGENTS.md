@@ -15,6 +15,8 @@ XFCE shortcuts, PipeWire/WirePlumber, TuneD, and a firmware-matched msi-ec drive
 - `local.gf63.control.policy`: authorization for the exact installed helper path.
 - `configure_xfce.py`: per-user settings with backup and conditional restoration.
 - `battery_limit.py`: standalone CLI retained for terminal users.
+- `install_graphics.py`: read-only NVIDIA driver diagnosis; installation is handed
+  to a terminal where the user runs sudo, never to the root helper.
 - `packaging/`: binary/source RPM build and reusable installation bundle.
 - `packaging/build_deb.py`, `packaging/deb/`, `packaging/install-deb.sh`: the apt track's
   package build, `DEBIAN` metadata/maintainer scripts and bundle installer.
@@ -26,6 +28,12 @@ Keep the GUI unprivileged. Do not add arbitrary file paths, commands, shell eval
 or unchecked TuneD configuration to the root helper. Preserve its `python3 -I` shebang.
 Validate every root action before mutation and read back the actual hardware setting.
 Limit policy and helper changes to the documented hardware controls.
+
+Never route package installation through the root helper or the polkit action.
+`apt` runs arbitrary maintainer scripts as root, so driver installation opens a
+terminal and the user authenticates there. Accept only `nvidia-driver-<digits>`
+package names from `ubuntu-drivers devices`, never a name typed into the command.
+Do not pass `-y`, do not reboot, and do not turn Secure Boot off or suggest it.
 
 Use the driver's supported sysfs interface. Do not force firmware compatibility,
 write raw EC addresses, disable Secure Boot, or invent unsupported fan/GPU controls.
@@ -123,6 +131,9 @@ contents before a public release.
   key presses on nimf are unverified; only settings read/write/restore were checked.
 - Full reboot verification and all physical Fn combinations remain unverified.
 - Fan RPM curves and GPU power limits are not exposed by the chosen driver.
+- The NVIDIA section is apt-only and reports itself unavailable on the RPM track.
+  It was verified on this machine for status and command building; the terminal
+  install path was exercised only up to opening the terminal.
 - A different power manager may replace the selected TuneD profile.
 - State polling and Gtk.StatusIcon are pragmatic XFCE choices; improve them without
   adding duplicate key handling or blocking the UI.

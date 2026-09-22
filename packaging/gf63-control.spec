@@ -40,7 +40,7 @@ by the driver. No firmware override or raw EC writes are configured.
 install -d %{buildroot}%{_bindir} %{buildroot}%{_datadir}/gf63-control %{buildroot}%{_libexecdir}
 install -m 0755 packaging/gf63-control packaging/gf63-control-setup packaging/gf63-mac-shortcut %{buildroot}%{_bindir}/
 install -m 0755 battery_limit.py %{buildroot}%{_bindir}/battery-limit
-install -m 0644 gf63_control.py gf63_core.py configure_xfce.py configure_keyboard.py configure_lid.py configure_mac.py mac_shortcut.py desktop_env.py configure_kde.py configure_kde_lid.py configure_fonts.py install_fonts.py install_programs.py gf63-control-autostart.desktop %{buildroot}%{_datadir}/gf63-control/
+install -m 0644 gf63_control.py gf63_core.py configure_xfce.py configure_keyboard.py configure_lid.py configure_mac.py mac_shortcut.py desktop_env.py configure_kde.py configure_kde_lid.py configure_fonts.py install_fonts.py install_programs.py install_graphics.py gf63-control-autostart.desktop %{buildroot}%{_datadir}/gf63-control/
 install -d %{buildroot}%{_datadir}/gf63-control/vendor
 install -m 0644 gf63-control.svg %{buildroot}%{_datadir}/gf63-control/
 cp -a vendor/fonts %{buildroot}%{_datadir}/gf63-control/vendor/

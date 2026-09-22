@@ -14,6 +14,7 @@ import configure_mac as mac
 import desktop_env
 import configure_fonts as fonts
 import install_programs as programs
+import install_graphics as graphics
 
 
 class Control(Gtk.Application):
@@ -135,6 +136,7 @@ class Control(Gtk.Application):
         self.mac_settings()
         self.font_settings()
         self.program_settings()
+        self.graphics_settings()
 
     def add_section(self, box, title):
         label = Gtk.Label()
@@ -435,6 +437,31 @@ class Control(Gtk.Application):
                                '적용 후 카카오톡을 트레이에서도 완전히 종료하고 다시 실행하세요.', xalign=0)
         note.set_line_wrap(True)
         box.pack_start(note, False, False, 0)
+        self.build_graphics_section(box)
+
+    def build_graphics_section(self, box):
+        self.add_section(box, 'NVIDIA 그래픽 드라이버')
+        note = Gtk.Label(label='내장 Intel 그래픽과 함께 쓰는 NVIDIA 드라이버를 설치합니다.\n'
+                               '설치는 관리자 권한이 필요하므로 제어판이 아닌 터미널에서 진행합니다.\n'
+                               '터미널에 표시되는 내용을 확인하고 관리자 암호를 입력하세요.\n'
+                               '설치 후에는 재부팅해야 새 드라이버로 전환됩니다.', xalign=0)
+        note.set_line_wrap(True)
+        box.pack_start(note, False, False, 0)
+        self.graphics_status = Gtk.Label(label='그래픽 드라이버 상태 확인 중…', xalign=0)
+        self.graphics_status.set_line_wrap(True)
+        self.graphics_status.set_max_width_chars(65)
+        self.graphics_status.set_selectable(True)
+        box.pack_start(self.graphics_status, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        self.graphics_buttons = []
+        self.graphics_busy = False
+        for title, operation in [('터미널에서 설치', 'install'), ('명령 복사', 'copy'),
+                                 ('상태 확인', 'status')]:
+            button = Gtk.Button(label=title)
+            button.connect('clicked', lambda _, op=operation: self.graphics_settings(op))
+            buttons.pack_start(button, False, False, 0)
+            self.graphics_buttons.append(button)
+        box.pack_start(buttons, False, False, 0)
 
     def program_settings(self, operation='status'):
         if self.program_busy:
@@ -472,6 +499,49 @@ class Control(Gtk.Application):
             self.program_status.set_text(future.result())
         except Exception as exc:
             self.program_status.set_text('프로그램 설치·실행 실패: ' + str(exc)[-1500:])
+        return False
+
+    def graphics_settings(self, operation='status'):
+        if self.graphics_busy:
+            return
+        self.graphics_busy = True
+        for button in self.graphics_buttons:
+            button.set_sensitive(False)
+        self.graphics_status.set_text({'install': '터미널을 여는 중…',
+                                       'copy': '설치 명령을 확인하는 중…'}.get(
+                                           operation, '그래픽 드라이버 상태 확인 중…'))
+
+        def progress(message):
+            GLib.idle_add(self.graphics_progress, message)
+
+        # Every branch reads hardware or the package database, so none of it
+        # may run on the main thread. The clipboard is set from the callback.
+        def work():
+            if operation == 'install':
+                return graphics.install(progress) + '\n\n' + graphics.status(), None
+            if operation == 'copy':
+                text = '\n'.join(graphics.commands())
+                return '설치 명령을 클립보드에 복사했습니다.\n\n' + text, text
+            return graphics.status(), None
+
+        future = self.program_pool.submit(work)
+        future.add_done_callback(lambda result: GLib.idle_add(self.graphics_finished, result))
+
+    def graphics_progress(self, message):
+        self.graphics_status.set_text(message)
+        return False
+
+    def graphics_finished(self, future):
+        self.graphics_busy = False
+        for button in self.graphics_buttons:
+            button.set_sensitive(True)
+        try:
+            message, copied = future.result()
+            if copied:
+                Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(copied, -1)
+            self.graphics_status.set_text(message)
+        except Exception as exc:
+            self.graphics_status.set_text('그래픽 드라이버 설치 실패: ' + str(exc)[-1500:])
         return False
 
     def font_settings(self, operation='status'):
