@@ -5,7 +5,10 @@ import desktop_env
 import json
 from pathlib import Path
 import re
+import shutil
+import signal
 import subprocess
+import time
 
 EC = Path('/sys/devices/platform/msi-ec')
 HELPER = '/usr/libexec/gf63-control-helper'
@@ -34,6 +37,75 @@ def number(path):
         return int(read(path))
     except (ValueError, TypeError):
         return None
+
+
+def plank_processes(binary):
+    """Find only this user's Plank instances on the current X11 display."""
+    executable = Path(binary).resolve()
+    display = os.environ.get('DISPLAY', '')
+    bus = os.environ.get('DBUS_SESSION_BUS_ADDRESS', '')
+    found = []
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if entry.stat().st_uid != os.getuid() or (entry / 'exe').resolve() != executable:
+                continue
+            args = [os.fsdecode(value) for value in (entry / 'cmdline').read_bytes().split(b'\0') if value]
+            env = dict(value.split(b'=', 1) for value in (entry / 'environ').read_bytes().split(b'\0') if b'=' in value)
+            process_display = os.fsdecode(env.get(b'DISPLAY', b''))
+            for index, arg in enumerate(args[1:], 1):
+                if arg.startswith('--display='):
+                    process_display = arg.split('=', 1)[1]
+                elif arg == '--display' and index + 1 < len(args):
+                    process_display = args[index + 1]
+            if process_display != display or bus and os.fsdecode(env.get(b'DBUS_SESSION_BUS_ADDRESS', b'')) != bus:
+                continue
+            if args:
+                found.append((int(entry.name), [binary] + args[1:]))
+        except (OSError, ValueError):
+            continue  # Processes may disappear while /proc is being read.
+    return found
+
+
+def plank_status():
+    if not desktop_env.x11() or not os.environ.get('DISPLAY'):
+        return 'Plank 재시작은 X11 데스크톱 세션에서 사용할 수 있습니다.', False
+    binary = shutil.which('plank')
+    if not binary:
+        return 'Plank가 설치되어 있지 않습니다.', False
+    running = plank_processes(binary)
+    return ('Plank 실행 중 · 현재 화면의 도크를 재시작할 수 있습니다.' if running
+            else 'Plank가 실행 중이 아닙니다. 버튼을 누르면 시작합니다.'), True
+
+
+def restart_plank():
+    message, available = plank_status()
+    if not available:
+        raise RuntimeError(message)
+    binary = shutil.which('plank')
+    previous = plank_processes(binary)
+    for pid, _ in previous:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + 5
+    old_pids = {pid for pid, _ in previous}
+    while old_pids.intersection(pid for pid, _ in plank_processes(binary)):
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Plank가 종료되지 않아 재시작하지 못했습니다.')
+        time.sleep(0.1)
+    commands = [args for _, args in previous] or [[binary]]
+    children = [subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)
+                for args in commands]
+    # A successful fork alone does not mean the dock started successfully.
+    time.sleep(1)
+    running = plank_processes(binary)
+    if not running or any(child.poll() not in (None, 0) for child in children):
+        raise RuntimeError('Plank 실행을 확인하지 못했습니다. 실행 환경과 도크 설정을 확인하세요.')
+    return 'Plank를 다시 시작했습니다. 도크 위치를 확인하세요.', True
 
 
 def parse_volume(text):

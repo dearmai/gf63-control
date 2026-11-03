@@ -19,7 +19,8 @@ import install_graphics as graphics
 
 
 class Control(Gtk.Application):
-    KEYBOARD_NOTE = ('한/영 또는 Caps Lock 키로 한국어와 영어를 전환합니다.\n'
+    KEYBOARD_NOTE = ('지원 한글 입력기: nimf, IBus.\n'
+                     '한/영 또는 Caps Lock 키로 한국어와 영어를 전환합니다.\n'
                      'Caps Lock의 대문자 고정 기능은 해제됩니다.\n'
                      '기능키를 추가 선택한 뒤 적용하세요. 기존 앱 단축키와 겹칠 수 있습니다.\n'
                      '{label}에서 한글 입력기를 선택한 상태에서 사용하세요.')
@@ -139,6 +140,7 @@ class Control(Gtk.Application):
         self.font_settings()
         self.program_settings()
         self.graphics_settings()
+        self.plank_settings()
 
     def add_section(self, box, title):
         label = Gtk.Label()
@@ -279,6 +281,7 @@ class Control(Gtk.Application):
         settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         settings_scroll.add(settings)
         notebook.append_page(settings_scroll, Gtk.Label(label='기능키 · OSD'))
+        self.build_plank_section(settings)
         self.add_section(settings, 'KDE · GNOME · Konsole 글꼴')
         font_note = Gtk.Label(label='KDE·GNOME 일반 글꼴: Pretendard · 고정폭: D2Coding\n'
                                    '패키지에 포함된 글꼴을 오프라인으로 설치합니다. Konsole은 11pt입니다.\n'
@@ -362,6 +365,7 @@ class Control(Gtk.Application):
             keyboard_buttons.pack_start(button, False, False, 0)
             self.keyboard_buttons.append(button)
         settings.pack_start(keyboard_buttons, False, False, 0)
+        self.build_key_monitor(settings)
         self.build_capture_section(settings)
         self.add_section(settings, '기능키와 OSD')
         explanation = Gtk.Label(xalign=0)
@@ -660,6 +664,101 @@ class Control(Gtk.Application):
         except Exception as exc:
             self.capture_status.set_text('캡처 단축키 설정 실패: ' + str(exc))
         return False
+
+    def build_plank_section(self, settings):
+        self.add_section(settings, '도크 위치 복구')
+        note = Gtk.Label(label='ThinLinc 창 크기나 해상도를 바꾼 뒤 도크 위치가 어긋나면 사용하세요.\n'
+                               '현재 화면의 Plank를 다시 시작합니다.', xalign=0)
+        note.set_line_wrap(True)
+        settings.pack_start(note, False, False, 0)
+        self.plank_status = Gtk.Label(label='Plank 상태 확인 중…', xalign=0)
+        self.plank_status.set_line_wrap(True)
+        self.plank_status.set_max_width_chars(65)
+        settings.pack_start(self.plank_status, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        self.plank_restart_button = Gtk.Button(label='Plank 재시작')
+        self.plank_restart_button.connect('clicked', lambda _: self.plank_settings('restart'))
+        self.plank_refresh_button = Gtk.Button(label='상태 확인')
+        self.plank_refresh_button.connect('clicked', lambda _: self.plank_settings())
+        for button in (self.plank_restart_button, self.plank_refresh_button):
+            buttons.pack_start(button, False, False, 0)
+        settings.pack_start(buttons, False, False, 0)
+        self.plank_busy = False
+        self.plank_available = False
+
+    def plank_settings(self, operation='status'):
+        if self.plank_busy:
+            return
+        self.plank_busy = True
+        self.plank_restart_button.set_sensitive(False)
+        self.plank_refresh_button.set_sensitive(False)
+        self.plank_status.set_text('Plank 재시작 중…' if operation == 'restart' else 'Plank 상태 확인 중…')
+        future = self.pool.submit(core.restart_plank if operation == 'restart' else core.plank_status)
+        future.add_done_callback(lambda result: GLib.idle_add(self.plank_finished, result))
+
+    def plank_finished(self, future):
+        self.plank_busy = False
+        self.plank_refresh_button.set_sensitive(True)
+        try:
+            message, self.plank_available = future.result()
+            self.plank_status.set_text(message)
+        except Exception as exc:
+            self.plank_status.set_text('Plank 작업 실패: ' + str(exc))
+        self.plank_restart_button.set_sensitive(self.plank_available)
+        return False
+
+    def build_key_monitor(self, settings):
+        monitor = Gtk.Expander(label='키코드 모니터')
+        monitor.set_expanded(True)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=8)
+        monitor.add(box)
+        note = Gtk.Label(label='아래 입력칸에 포커스가 있을 때만 키 입력을 표시합니다.\n'
+                               'Caps Lock을 누르고 글자를 입력해 한영 전환도 확인할 수 있습니다.\n'
+                               '최근 8개 이벤트만 표시하며 파일에 저장하지 않습니다.\n'
+                               '시스템 단축키나 Fn 단독 키는 표시되지 않을 수 있습니다.', xalign=0)
+        note.set_line_wrap(True)
+        box.pack_start(note, False, False, 0)
+        self.key_monitor_entry = Gtk.Entry()
+        self.key_monitor_entry.set_placeholder_text('여기를 클릭한 뒤 확인할 키를 누르세요.')
+        # GTK 3 delivers key capture to the toplevel. Filter by the focused entry
+        # below so other controls and other applications are never monitored.
+        self.key_monitor_controller = Gtk.EventControllerKey.new(self.window)
+        self.key_monitor_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        self.key_monitor_controller.connect('key-pressed', self.key_monitor_event, '누름')
+        self.key_monitor_controller.connect('key-released', self.key_monitor_event, '뗌')
+        box.pack_start(self.key_monitor_entry, False, False, 0)
+        self.key_monitor_events = []
+        self.key_monitor_output = Gtk.Label(label='키 입력 대기 중…', xalign=0, yalign=0)
+        self.key_monitor_output.set_selectable(True)
+        self.key_monitor_output.set_line_wrap(True)
+        self.key_monitor_output.set_max_width_chars(65)
+        box.pack_start(self.key_monitor_output, False, False, 0)
+        clear = Gtk.Button(label='확인 내용 지우기')
+        clear.set_halign(Gtk.Align.START)
+        clear.connect('clicked', self.clear_key_monitor)
+        box.pack_start(clear, False, False, 0)
+        settings.pack_start(monitor, False, False, 0)
+
+    def key_monitor_event(self, controller, keyval, keycode, state, kind):
+        if not self.key_monitor_entry.has_focus():
+            return False
+        if self.screen_active:
+            self.key_monitor_output.set_text('화면 잠금 상태에서는 키 입력을 표시하지 않습니다.')
+            return False
+        name = Gdk.keyval_name(keyval) or '이름 없음'
+        self.key_monitor_events.append(
+            f'{kind} · 키코드 {keycode} · {name} · '
+            f'키값 {keyval:#x} · 상태 {int(state):#x}')
+        self.key_monitor_events = self.key_monitor_events[-8:]
+        self.key_monitor_output.set_text('\n'.join(self.key_monitor_events))
+        # Let GTK and the input method handle the key normally.
+        return False
+
+    def clear_key_monitor(self, *_):
+        self.key_monitor_events.clear()
+        self.key_monitor_entry.set_text('')
+        self.key_monitor_output.set_text('키 입력 대기 중…')
+        self.key_monitor_entry.grab_focus()
 
     def keyboard_settings(self, operation='status'):
         if self.keyboard_busy:

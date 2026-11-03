@@ -1,6 +1,8 @@
 import unittest
 import json
-from unittest.mock import patch
+import os
+from tempfile import TemporaryDirectory
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 import gf63_core as core
 import gf63_helper as helper
@@ -79,6 +81,95 @@ class DesktopTests(unittest.TestCase):
     def test_unknown_action_rejected(self):
         with self.assertRaises(ValueError):
             core.apply('shell')
+
+
+class PlankTests(unittest.TestCase):
+    def test_process_selection_excludes_other_users_displays_buses_and_binaries(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / 'plank'
+            binary.touch()
+            other = root / 'other'
+            other.touch()
+            entries = []
+            for pid, display, bus, executable, extra in (
+                    (10, ':10', 'current', binary, ['--name', 'dock1']),
+                    (11, ':11', 'current', binary, []),
+                    (12, ':10', 'other', binary, []),
+                    (13, ':10', 'current', binary, ['--display=:11']),
+                    (14, ':10', 'current', other, []),
+                    (16, ':11', 'current', binary, ['--display', ':10'])):
+                entry = root / str(pid)
+                entry.mkdir()
+                (entry / 'exe').symlink_to(executable)
+                (entry / 'cmdline').write_bytes(b'\0'.join(os.fsencode(arg) for arg in ['plank'] + extra) + b'\0')
+                (entry / 'environ').write_bytes(f'DISPLAY={display}\0DBUS_SESSION_BUS_ADDRESS={bus}\0'.encode())
+                entries.append(entry)
+            foreign = MagicMock()
+            foreign.name = '17'
+            foreign.stat.return_value.st_uid = os.getuid() + 1
+            entries.append(foreign)
+            proc = MagicMock()
+            proc.iterdir.return_value = entries
+            with patch.object(core, 'Path', side_effect=lambda path: proc if path == '/proc' else Path(path)), \
+                    patch.dict(core.os.environ, {'DISPLAY': ':10', 'DBUS_SESSION_BUS_ADDRESS': 'current'}):
+                found = core.plank_processes(str(binary))
+            self.assertEqual({pid for pid, _ in found}, {10, 16})
+            self.assertEqual(found[0][1], [str(binary), '--name', 'dock1'])
+
+    @patch.object(core.subprocess, 'Popen')
+    @patch.object(core.os, 'kill')
+    @patch.object(core.shutil, 'which', return_value=None)
+    @patch.object(core.desktop_env, 'x11', return_value=True)
+    @patch.dict(core.os.environ, {'DISPLAY': ':10'})
+    def test_missing_plank_does_not_stop_any_process(self, x11, which, kill, launch):
+        message, available = core.plank_status()
+        self.assertFalse(available)
+        self.assertIn('설치되어 있지 않습니다', message)
+        with self.assertRaisesRegex(RuntimeError, '설치되어 있지 않습니다'):
+            core.restart_plank()
+        kill.assert_not_called()
+        launch.assert_not_called()
+
+    def test_restart_waits_for_exit_and_preserves_custom_dock_arguments(self):
+        command = ['/bin/plank', '--name', 'dock2']
+        child = MagicMock()
+        child.poll.return_value = None
+        with patch.object(core, 'plank_status', return_value=('', True)), \
+                patch.object(core.shutil, 'which', return_value='/bin/plank'), \
+                patch.object(core, 'plank_processes', side_effect=[[(10, command)], [(10, command)], [], [(20, command)]]), \
+                patch.object(core.os, 'kill') as kill, \
+                patch.object(core.time, 'sleep'), \
+                patch.object(core.subprocess, 'Popen', return_value=child) as launch:
+            message, available = core.restart_plank()
+        self.assertTrue(available)
+        self.assertIn('다시 시작했습니다', message)
+        kill.assert_called_once_with(10, core.signal.SIGTERM)
+        self.assertEqual(launch.call_args.args, (command,))
+        self.assertTrue(launch.call_args.kwargs['start_new_session'])
+        self.assertNotIn('shell', launch.call_args.kwargs)
+
+    def test_failed_stop_does_not_start_a_duplicate_dock(self):
+        with patch.object(core, 'plank_status', return_value=('', True)), \
+                patch.object(core.shutil, 'which', return_value='/bin/plank'), \
+                patch.object(core, 'plank_processes', return_value=[(10, ['/bin/plank'])]), \
+                patch.object(core.os, 'kill'), \
+                patch.object(core.time, 'monotonic', side_effect=[0, 6]), \
+                patch.object(core.subprocess, 'Popen') as launch:
+            with self.assertRaisesRegex(RuntimeError, '종료되지 않아'):
+                core.restart_plank()
+        launch.assert_not_called()
+
+    def test_early_launch_failure_is_not_reported_as_success(self):
+        child = MagicMock()
+        child.poll.return_value = 1
+        with patch.object(core, 'plank_status', return_value=('', True)), \
+                patch.object(core.shutil, 'which', return_value='/bin/plank'), \
+                patch.object(core, 'plank_processes', side_effect=[[], [], []]), \
+                patch.object(core.time, 'sleep'), \
+                patch.object(core.subprocess, 'Popen', return_value=child):
+            with self.assertRaisesRegex(RuntimeError, '실행을 확인하지 못했습니다'):
+                core.restart_plank()
 
 
 if __name__ == '__main__':

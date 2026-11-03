@@ -24,6 +24,9 @@ SCHEMAS = {IBUS: 'org.freedesktop.ibus.engine.hangul',
 LABELS = {IBUS: 'IBus', NIMF: 'nimf'}
 # nimf switches to Korean and back through two separate shortcut lists.
 NIMF_SHORTCUTS = ('shortcuts-to-lang', 'shortcuts-to-sys')
+# Remote X11 clients may send Caps_Lock on a new keycode after the original
+# Caps Lock keycode is remapped. Nimf can accept that keysym directly as well.
+TOGGLE_KEYS = {IBUS: ('Hangul',), NIMF: ('Hangul', 'Caps_Lock')}
 FUNCTION_KEYS = tuple('F' + str(number) for number in range(1, 21))
 # nimf's key table stops at F12; IBus accepts every X11 function keysym.
 METHOD_FUNCTION_KEYS = {IBUS: FUNCTION_KEYS, NIMF: FUNCTION_KEYS[:12]}
@@ -32,15 +35,16 @@ Type=Application
 Name=GF63 Control Korean Keyboard
 Comment=Use Caps Lock for Korean/English switching
 Exec=/usr/bin/python3 /usr/share/gf63-control/configure_xfce.py --watch-keyboard
-OnlyShowIn=XFCE;KDE;GNOME;
+OnlyShowIn=XFCE;KDE;GNOME;X-Cinnamon;
 Terminal=false
 StartupNotify=false
 '''
 # Exact previous app output; do not accept arbitrary files with a matching name.
-ONESHOT_DESKTOP = DESKTOP.replace('--watch-keyboard', '--apply-keyboard')
+PRE_CINNAMON_DESKTOP = DESKTOP.replace('GNOME;X-Cinnamon;', 'GNOME;')
+ONESHOT_DESKTOP = PRE_CINNAMON_DESKTOP.replace('--watch-keyboard', '--apply-keyboard')
 PRE_GNOME_DESKTOP = ONESHOT_DESKTOP.replace('OnlyShowIn=XFCE;KDE;GNOME;', 'OnlyShowIn=XFCE;KDE;')
 LEGACY_DESKTOP = ONESHOT_DESKTOP.replace('OnlyShowIn=XFCE;KDE;GNOME;', 'OnlyShowIn=XFCE;')
-OWNED_DESKTOPS = (DESKTOP, ONESHOT_DESKTOP, PRE_GNOME_DESKTOP, LEGACY_DESKTOP)
+OWNED_DESKTOPS = (DESKTOP, PRE_CINNAMON_DESKTOP, ONESHOT_DESKTOP, PRE_GNOME_DESKTOP, LEGACY_DESKTOP)
 
 
 def run(*args, input=None):
@@ -69,50 +73,176 @@ def save(state):
     BACKUP.write_text(json.dumps(state, ensure_ascii=False, indent=2))
 
 
-def clear_caps_lock():
+class _XkbState(ctypes.Structure):
+    _fields_ = [('group', ctypes.c_ubyte), ('locked_group', ctypes.c_ubyte),
+                ('base_group', ctypes.c_ushort), ('latched_group', ctypes.c_ushort),
+                ('mods', ctypes.c_ubyte), ('base_mods', ctypes.c_ubyte),
+                ('latched_mods', ctypes.c_ubyte), ('locked_mods', ctypes.c_ubyte),
+                ('compat_state', ctypes.c_ubyte), ('grab_mods', ctypes.c_ubyte),
+                ('compat_grab_mods', ctypes.c_ubyte), ('lookup_mods', ctypes.c_ubyte),
+                ('compat_lookup_mods', ctypes.c_ubyte), ('ptr_buttons', ctypes.c_ushort)]
+
+
+def caps_lock_state(clear=False):
     x11 = ctypes.CDLL('libX11.so.6')
     x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
     x11.XOpenDisplay.restype = ctypes.c_void_p
     x11.XkbLockModifiers.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint]
     x11.XkbLockModifiers.restype = ctypes.c_int
+    x11.XkbGetState.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(_XkbState)]
     x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
     display = x11.XOpenDisplay(None)
     if not display:
         raise RuntimeError('X11 디스플레이에 연결할 수 없습니다.')
     try:
-        if not x11.XkbLockModifiers(display, 0x100, 2, 0):
-            raise RuntimeError('Caps Lock 대문자 고정을 해제하지 못했습니다.')
+        state = _XkbState()
+        if x11.XkbGetState(display, 0x100, ctypes.byref(state)):
+            raise RuntimeError('Caps Lock 대문자 고정 상태를 읽을 수 없습니다.')
+        if clear and state.locked_mods & 2:
+            if not x11.XkbLockModifiers(display, 0x100, 2, 0):
+                raise RuntimeError('Caps Lock 대문자 고정을 해제하지 못했습니다.')
+            if x11.XkbGetState(display, 0x100, ctypes.byref(state)) or state.locked_mods & 2:
+                raise RuntimeError('Caps Lock 대문자 고정 해제를 확인하지 못했습니다.')
+        return bool(state.locked_mods & 2)
     finally:
         x11.XCloseDisplay(display)
 
 
+def clear_caps_lock():
+    caps_lock_state(clear=True)
+
+
+class _XkbMods(ctypes.Structure):
+    _fields_ = [('mask', ctypes.c_ubyte), ('real_mods', ctypes.c_ubyte),
+                ('vmods', ctypes.c_ushort)]
+
+
+class _XkbInterpret(ctypes.Structure):
+    _fields_ = [('sym', ctypes.c_ulong), ('flags', ctypes.c_ubyte),
+                ('match', ctypes.c_ubyte), ('mods', ctypes.c_ubyte),
+                ('virtual_mod', ctypes.c_ubyte), ('action', ctypes.c_ubyte * 8)]
+
+
+class _XkbCompat(ctypes.Structure):
+    _fields_ = [('interprets', ctypes.POINTER(_XkbInterpret)), ('groups', _XkbMods * 4),
+                ('count', ctypes.c_ushort), ('size', ctypes.c_ushort)]
+
+
+class _XkbDesc(ctypes.Structure):
+    _fields_ = [('display', ctypes.c_void_p), ('flags', ctypes.c_ushort),
+                ('device', ctypes.c_ushort), ('min_code', ctypes.c_ubyte),
+                ('max_code', ctypes.c_ubyte), ('controls', ctypes.c_void_p),
+                ('server', ctypes.c_void_p), ('map', ctypes.c_void_p),
+                ('indicators', ctypes.c_void_p), ('names', ctypes.c_void_p),
+                ('compat', ctypes.POINTER(_XkbCompat)), ('geometry', ctypes.c_void_p)]
+
+
+def caps_lock_actions(value=None):
+    """Change only Caps_Lock interpretations through the supported XKB API.
+
+    Keeping the keysym lets nimf receive remote Caps Lock keys. NoAction disables
+    their LockMods action, including keys dynamically registered by an X11 client.
+    All other symbol interpretations and modifier bindings remain intact.
+    """
+    x11 = ctypes.CDLL('libX11.so.6')
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XOpenDisplay.restype = ctypes.c_void_p
+    x11.XkbGetKeyboard.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
+    x11.XkbGetKeyboard.restype = ctypes.POINTER(_XkbDesc)
+    x11.XkbSetCompatMap.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                  ctypes.POINTER(_XkbDesc), ctypes.c_int]
+    x11.XkbFreeKeyboard.argtypes = [ctypes.POINTER(_XkbDesc), ctypes.c_uint, ctypes.c_int]
+    x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    display = x11.XOpenDisplay(None)
+    if not display:
+        raise RuntimeError('X11 디스플레이에 연결할 수 없습니다.')
+    desc = None
+    try:
+        desc = x11.XkbGetKeyboard(display, 0x7f, 0x100)
+        if not desc or not desc.contents.compat:
+            raise RuntimeError('Caps Lock의 XKB 동작을 읽을 수 없습니다.')
+        compat = desc.contents.compat.contents
+        entries = [compat.interprets[i] for i in range(compat.count)
+                   if compat.interprets[i].sym == 0xffe5]  # XK_Caps_Lock
+        current = [[entry.flags, entry.match, entry.mods, entry.virtual_mod,
+                    list(entry.action)] for entry in entries]
+        if not current:
+            raise RuntimeError('Caps Lock의 XKB 동작을 찾을 수 없습니다.')
+        if value is None:
+            return current
+        if (not isinstance(value, list) or len(value) != len(current)
+                or any(not isinstance(record, list) or len(record) != 5
+                       or record[:4] != old[:4] or not isinstance(record[4], list)
+                       or len(record[4]) != 8
+                       or any(type(byte) is not int or not 0 <= byte <= 255 for byte in record[4])
+                       for record, old in zip(value, current))):
+            raise ValueError('Caps Lock의 XKB 동작 형식이 올바르지 않습니다.')
+        for entry, record in zip(entries, value):
+            entry.action[:] = record[4]
+        if not x11.XkbSetCompatMap(display, 1, desc, True):  # XkbSymInterpMask
+            raise RuntimeError('Caps Lock의 대문자 고정 동작을 변경하지 못했습니다.')
+        x11.XSync(display, False)
+    finally:
+        if desc:
+            x11.XkbFreeKeyboard(desc, 0x7f, True)
+        x11.XCloseDisplay(display)
+    if caps_lock_actions() != value:
+        raise RuntimeError('Caps Lock의 대문자 고정 동작 변경을 확인하지 못했습니다.')
+
+
+def apply_caps_actions(state, restore=False):
+    if 'old_caps_actions' not in state:
+        return False
+    current = caps_lock_actions()
+    expected = state['installed_caps_actions'] if restore else state['old_caps_actions']
+    target = state['old_caps_actions'] if restore else state['installed_caps_actions']
+    if current not in (expected, target):
+        return False  # Preserve an interpretation the user changed after setup.
+    if current != target:
+        caps_lock_actions(target)
+    if not restore:
+        clear_caps_lock()
+    return True
+
+
 def apply_mapping(state, restore=False, quiet=False):
     current = keymap().get(state['code'])
+    if restore:
+        apply_caps_actions(state, restore=True)
     # Leave a mapping changed by the user after setup alone.
     if current not in (state['old_map'], state['installed_map']):
         if not quiet:
             print('사용자가 변경한 Caps Lock 키 설정을 유지합니다.')
         return
+    native_caps = apply_caps_actions(state) if not restore else False
     locks = lock_keys()
     expected = state['installed_locks'] if restore else state['old_locks']
     target = state['old_locks'] if restore else state['installed_locks']
     symbols = state['old_map'] if restore else state['installed_map']
-    if current == symbols and locks == target:
-        return
-    if restore and current != state['installed_map']:
+    if current == symbols and (set(locks) == set(target) or native_caps):
         return
     commands = []
     # Only restore the modifier when its value is still ours.
-    if locks == expected or locks == target:
-        commands.append('clear Lock')
-        if target:
-            commands.append('add Lock = ' + ' '.join(target))
-    commands.insert(0, 'keycode ' + state['code'] + ' = ' + ' '.join(symbols))
-    if not restore and locks == state['old_locks'] and 'Caps_Lock' in locks:
+    change_locks = set(locks) in (set(expected), set(target))
+    if change_locks:
+        # Preserve unrelated bindings, including X11's unnameable BadKey entries.
+        # remove resolves keysyms before remapping; add resolves them afterwards.
+        removed = [key for key in locks if key not in target]
+        added = [key for key in target if key not in locks]
+        if removed:
+            commands.append('remove Lock = ' + ' '.join(removed))
+    commands.append('keycode ' + state['code'] + ' = ' + ' '.join(symbols))
+    if change_locks and added:
+        commands.append('add Lock = ' + ' '.join(added))
+    if (not restore and 'old_caps_actions' not in state
+            and set(locks) == set(state['old_locks']) and 'Caps_Lock' in locks):
         clear_caps_lock()
     run('xmodmap', '-', input='\n'.join(commands) + '\n')
     if keymap().get(state['code']) != symbols:
         raise RuntimeError('Caps Lock 키 설정을 적용하지 못했습니다.')
+    if change_locks and set(lock_keys()) != set(target):
+        raise RuntimeError('Caps Lock 대문자 고정 설정을 적용하지 못했습니다.')
 
 
 def installed_schemas():
@@ -301,17 +431,26 @@ def _configure(restore=False, login=False, function_keys=None):
                      installed_map=['Hangul', 'NoSymbol', 'Hangul'],
                      old_locks=locks, installed_locks=[key for key in locks if key != 'Caps_Lock'],
                      input_method=method, old_switch=old_switch,
-                     installed_switch=extend_switch(method, old_switch, ['Hangul']),
+                     installed_switch=extend_switch(method, old_switch, TOGGLE_KEYS[method]),
                      old_autostart=AUTOSTART.read_text() if AUTOSTART.exists() else None)
         save(state)  # Persist originals before any desktop mutation.
-    if function_keys is not None and old_switch not in (state['old_switch'], state['installed_switch']):
+    switch_owned = old_switch in (state['old_switch'], state['installed_switch'])
+    if function_keys is not None and not switch_owned:
         raise RuntimeError('입력기 전환 키가 외부에서 변경되었습니다. 원래 키 설정 복원 후 다시 적용하세요.')
-    if function_keys is not None and function_keys != state.get('function_keys', []):
-        state['function_keys'] = function_keys
-        state['installed_switch'] = extend_switch(method, state['old_switch'],
-                                                  ['Hangul'] + function_keys)
-        save(state)
-    if old_switch in (state['old_switch'], state['installed_switch']) or function_keys is not None:
+    if method == NIMF and switch_owned and 'old_caps_actions' not in state:
+        actions = caps_lock_actions()
+        state['old_caps_actions'] = actions
+        state['installed_caps_actions'] = [record[:4] + [[0] * 8] for record in actions]
+        save(state)  # Save the original XKB action before disabling Caps Lock.
+    if switch_owned:
+        selected = state.get('function_keys', []) if function_keys is None else function_keys
+        installed_switch = extend_switch(method, state['old_switch'],
+                                         list(TOGGLE_KEYS[method]) + selected)
+        if installed_switch != state['installed_switch'] or selected != state.get('function_keys', []):
+            if function_keys is not None:
+                state['function_keys'] = selected
+            state['installed_switch'] = installed_switch
+            save(state)
         write_switch(method, state['installed_switch'])
     apply_mapping(state)
     AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
@@ -360,8 +499,10 @@ def status():
     state = json.loads(BACKUP.read_text())
     method = method_of(state)
     switches = switch_keys(method, read_switch(method))
-    active = (keymap().get(state['code']) == state['installed_map']
-              and lock_keys() == state['installed_locks'] and 'Hangul' in switches
+    locks_ok = (caps_lock_actions() == state['installed_caps_actions'] and not caps_lock_state()
+                if 'old_caps_actions' in state else set(lock_keys()) == set(state['installed_locks']))
+    active = (keymap().get(state['code']) == state['installed_map'] and locks_ok
+              and all(key in switches for key in TOGGLE_KEYS[method])
               and all(key in switches for key in state.get('function_keys', [])))
     persistent = AUTOSTART.exists() and AUTOSTART.read_text() == DESKTOP
     if not active:
