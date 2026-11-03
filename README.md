@@ -227,11 +227,16 @@ python3 packaging/build.py              # Debian 계열: python3 packaging/build
 64비트 Windows 설치 파일을 받습니다. 실행 환경과 카카오톡을 설치한 뒤 번들 Pretendard로
 영문·한글 UI 글꼴(Tahoma·Arial·Segoe UI·MS Sans Serif 등)을 Pretendard로 대체하고
 ClearType RGB 안티앨리어싱을 설정한 뒤 **카카오톡 (Wine)** 앱 메뉴를 만듭니다.
+설치된 `KakaoTalk.exe`에서 노란색 TALK 아이콘을 추출해 사용자 아이콘 테마에 등록합니다.
+기존 톱니바퀴 아이콘은 **설치 / 설정 복구**로 변경할 수 있습니다. 아이콘 추출·등록에
+실패하면 오류를 표시하며 기존 바로가기를 유지합니다.
 이미 실행 중인 카카오톡은 완전히 종료한 뒤 다시 실행해야 글꼴 다듬기가 반영됩니다.
 아이콘·이모지 글꼴은 대체하지 않습니다. 기존 글꼴 대체표는 `kakaotalk-install/font-substitutes-before.reg`에 백업합니다.
 이전 Wine 바탕 화면 설정은 `kakaotalk-install/font-rendering-before.reg`에 한 번 백업하며 언어 설정은 변경하지 않습니다. 기존 WinApps 카카오톡은 유지합니다.
-이미 설치된 카카오톡은 재설치하지 않고 글꼴·메뉴만 복구합니다. 사용자가 수정한 Wine 바로가기는 덮어쓰지 않습니다.
+이미 설치된 카카오톡은 재설치하지 않고 글꼴·아이콘·메뉴만 복구합니다. 사용자가 수정한 Wine 바로가기는 덮어쓰지 않습니다.
 Wine 바로가기의 `XMODIFIERS=@im=`은 현재 세션의 한글 입력기(nimf 또는 IBus)로 맞춥니다.
+세션의 `XMODIFIERS`를 우선하고, 없으면 입력기를 감지합니다. 과거 키보드 설정 백업은
+Wine 입력기 선택에 사용하지 않습니다.
 입력기를 바꾸면 **상태 확인**이 메뉴 재등록을 안내하고, **설치 / 설정 복구**로 바로가기를 다시 씁니다.
 
 설치는 별도 작업 스레드에서 진행해 노트북 제어를 막지 않습니다. 단계와 오류를 탭에서 확인할 수 있습니다.

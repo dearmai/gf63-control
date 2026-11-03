@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import time
 import urllib.parse
@@ -21,13 +22,14 @@ PREFIX = DATA / 'kakaotalk'
 EXE = PREFIX / 'drive_c/Program Files/Kakao/KakaoTalk/KakaoTalk.exe'
 APPLICATIONS = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'applications'
 LAUNCHER = APPLICATIONS / 'gf63-kakaotalk-wine.desktop'
+ICON = APPLICATIONS.parent / 'icons/hicolor/256x256/apps/gf63-kakaotalk.png'
 LOG = DATA / 'kakaotalk-install/install.log'
 DESKTOP = """[Desktop Entry]
 Type=Application
 Name=카카오톡 (Wine)
 Comment=Wine으로 실행하는 Windows 카카오톡
 Exec=/usr/bin/flatpak run --branch=stable-25.08 --env=WINEPREFIX=/var/data/kakaotalk --env=WINEDLLOVERRIDES=winemenubuilder.exe=d --env=WINEDEBUG=-all --env=XMODIFIERS=@im={module} --command=wine org.winehq.Wine "/var/data/kakaotalk/drive_c/Program Files/Kakao/KakaoTalk/KakaoTalk.exe"
-Icon=gf63-control
+Icon=gf63-kakaotalk
 Terminal=false
 Categories=Network;InstantMessaging;
 StartupWMClass=kakaotalk.exe
@@ -36,7 +38,16 @@ StartupWMClass=kakaotalk.exe
 
 def im_module():
     """Wine reaches the Hangul input method over XIM, so name the running one."""
-    return keyboard.active_method() or keyboard.IBUS
+    # The keyboard backup describes settings we own, not the current session.
+    # In particular, old backups default to IBus even after switching to nimf.
+    modifiers = os.environ.get('XMODIFIERS', '')
+    for name in keyboard.LABELS:
+        if modifiers == '@im=' + name:
+            return name
+    try:
+        return keyboard.detect_method()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return keyboard.IBUS
 
 
 def desktop_file():
@@ -45,13 +56,145 @@ def desktop_file():
 
 def owned_launchers():
     # A launcher this app wrote for either input method is ours to rewrite.
-    return [DESKTOP.format(module=name) for name in keyboard.LABELS]
+    current = [DESKTOP.format(module=name) for name in keyboard.LABELS]
+    return current + [entry.replace('Icon=gf63-kakaotalk\n', 'Icon=gf63-control\n')
+                      for entry in current]
+
+
+def executable_icon(data):
+    """Extract the first PE icon group; no Windows code is executed.
+
+    Bounds checks apply to both file offsets and resource-directory offsets.
+    Only the fixed type -> name -> language resource hierarchy is followed.
+    """
+    def read(offset, size):
+        if offset < 0 or size < 0 or offset + size > len(data):
+            raise ValueError('잘못된 실행 파일 리소스 범위')
+        return data[offset:offset + size]
+
+    def unpack(fmt, offset):
+        return struct.unpack(fmt, read(offset, struct.calcsize(fmt)))
+
+    if read(0, 2) != b'MZ':
+        raise ValueError('Windows 실행 파일이 아닙니다.')
+    pe, = unpack('<I', 0x3c)
+    if read(pe, 4) != b'PE\0\0':
+        raise ValueError('PE 헤더가 없습니다.')
+    section_count, = unpack('<H', pe + 6)
+    optional_size, = unpack('<H', pe + 20)
+    optional = pe + 24
+    magic, = unpack('<H', optional)
+    if magic not in (0x10b, 0x20b):
+        raise ValueError('지원하지 않는 PE 형식입니다.')
+    directories = 112 if magic == 0x20b else 96
+    if optional_size < directories + 24 or not 1 <= section_count <= 96:
+        raise ValueError('잘못된 PE 헤더 크기')
+    directory_count, = unpack('<I', optional + directories - 4)
+    if directory_count < 3:
+        raise ValueError('아이콘 리소스가 없습니다.')
+    sections = optional + optional_size
+
+    def file_offset(rva, size):
+        for i in range(section_count):
+            _, address, raw_size, raw = unpack('<IIII', sections + 40 * i + 8)
+            delta = rva - address
+            if 0 <= delta and delta + size <= raw_size:
+                read(raw + delta, size)
+                return raw + delta
+        raise ValueError('실행 파일 리소스 주소를 찾지 못했습니다.')
+
+    resource_rva, resource_size = unpack('<II', optional + directories + 16)
+    base = file_offset(resource_rva, resource_size)
+
+    def resource(offset, size):
+        if offset < 0 or offset + size > resource_size:
+            raise ValueError('잘못된 리소스 디렉터리 범위')
+        return read(base + offset, size)
+
+    def entries(relative):
+        header = resource(relative, 16)
+        named, numbered = struct.unpack_from('<HH', header, 12)
+        table = resource(relative + 16, 8 * (named + numbered))
+        return dict(struct.iter_unpack('<II', table))
+
+    def directory(entry):
+        if not entry & 0x80000000:
+            raise ValueError('리소스 디렉터리가 아닙니다.')
+        return entries(entry & 0x7fffffff)
+
+    def payload(entry):
+        languages = directory(entry)
+        leaf = next(iter(languages.values()))
+        if leaf & 0x80000000:
+            raise ValueError('잘못된 리소스 계층')
+        rva, size, _, _ = struct.unpack('<IIII', resource(leaf, 16))
+        if size > 16 * 1024 * 1024:
+            raise ValueError('아이콘 리소스가 허용 크기를 초과했습니다.')
+        return read(file_offset(rva, size), size)
+
+    try:
+        types = entries(0)
+        icons = directory(types[3])  # RT_ICON
+        groups = directory(types[14])  # RT_GROUP_ICON
+        group = payload(next(iter(groups.values())))
+        reserved, kind, count = struct.unpack_from('<HHH', group)
+        if reserved or kind != 1 or not 1 <= count <= 256 or len(group) != 6 + count * 14:
+            raise ValueError('잘못된 아이콘 그룹')
+        header, body = bytearray(group[:6]), bytearray()
+        for i in range(count):
+            item = group[6 + 14 * i:20 + 14 * i]
+            size, identifier = struct.unpack_from('<IH', item, 8)
+            bitmap = payload(icons[identifier])
+            if size != len(bitmap) or not size:
+                raise ValueError('아이콘 크기가 일치하지 않습니다.')
+            if len(body) + size > 16 * 1024 * 1024:
+                raise ValueError('아이콘 그룹이 허용 크기를 초과했습니다.')
+            header += item[:8] + struct.pack('<II', size, 6 + 16 * count + len(body))
+            body += bitmap
+        return bytes(header + body)
+    except (KeyError, StopIteration, struct.error) as exc:
+        raise ValueError('실행 파일의 아이콘을 찾지 못했습니다.') from exc
+
+
+def install_icon():
+    """Use the installed application's own icon, without shipping its artwork."""
+    temporary = ICON.with_suffix('.tmp')
+    try:
+        import gi
+        gi.require_version('GdkPixbuf', '2.0')
+        from gi.repository import GdkPixbuf
+
+        with EXE.open('rb') as source:
+            data = source.read(256 * 1024 * 1024 + 1)
+        if len(data) > 256 * 1024 * 1024:
+            raise ValueError('실행 파일이 허용 크기를 초과했습니다.')
+        loader = GdkPixbuf.PixbufLoader.new_with_type('ico')
+        loader.set_size(256, 256)
+        loader.write(executable_icon(data))
+        loader.close()
+        pixbuf = loader.get_pixbuf()
+        if pixbuf is None:
+            raise ValueError('아이콘 이미지를 읽지 못했습니다.')
+        ICON.parent.mkdir(parents=True, exist_ok=True)
+        pixbuf.savev(str(temporary), 'png', [], [])
+        temporary.chmod(0o644)
+        temporary.replace(ICON)
+    except Exception as exc:
+        raise RuntimeError('카카오톡 아이콘 등록 실패: ' + str(exc)) from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+    if shutil.which('gtk-update-icon-cache'):
+        run(['gtk-update-icon-cache', '-f', '-t', str(ICON.parents[2])])
 
 
 def run(args, timeout=30):
-    result = subprocess.run(args, text=True, capture_output=True, timeout=timeout)
+    # Wine utilities can emit Windows code-page bytes alongside UTF-8 output.
+    # Diagnostics must not abort an otherwise successful command; registry
+    # readback below still validates the actual settings independently.
+    result = subprocess.run(args, text=True, encoding='utf-8', errors='replace',
+                            capture_output=True, timeout=timeout)
     LOG.parent.mkdir(parents=True, exist_ok=True)
-    with LOG.open('a') as log:
+    with LOG.open('a', encoding='utf-8') as log:
         log.write(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError((result.stderr or result.stdout)[-1500:].strip()
@@ -69,7 +212,7 @@ def runtime_installed():
     if not shutil.which('flatpak'):
         return False
     result = subprocess.run(['flatpak', 'info', '--user', REF],
-                            text=True, capture_output=True, timeout=10)
+                            capture_output=True, timeout=10)
     return result.returncode == 0
 
 
@@ -80,7 +223,7 @@ def status():
         return '미설치 · Wine 실행 환경과 카카오톡을 설치할 수 있습니다.'
     if not EXE.is_file():
         return 'Wine 준비됨 · 카카오톡 설치가 필요합니다.'
-    if not LAUNCHER.is_file() or LAUNCHER.read_text() != desktop_file():
+    if not LAUNCHER.is_file() or LAUNCHER.read_text() != desktop_file() or not ICON.is_file():
         return '카카오톡 설치됨 · 설치 / 설정 복구로 실행 메뉴를 등록하세요.'
     return '설치됨 · 앱 메뉴에서 ‘카카오톡 (Wine)’을 실행할 수 있습니다.'
 
@@ -214,6 +357,8 @@ def install(progress=lambda message: None):
         configure_text_fonts()
         progress('글꼴 안티앨리어싱 설정 중…')
         configure_rendering()
+        progress('카카오톡 아이콘 등록 중…')
+        install_icon()
         APPLICATIONS.mkdir(parents=True, exist_ok=True)
         temporary = LAUNCHER.with_suffix('.tmp')
         temporary.write_text(desktop_file())
